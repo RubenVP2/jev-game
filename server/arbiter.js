@@ -3,8 +3,8 @@ import { kev } from './kev.js';
 
 const CLUE_TIMEOUT = Number(process.env.KEV_CLUE_TIMEOUT_MS || 2000);
 // Seuil de la probabilité « indice légal » (noul). 0 = Kev consultatif : la garde lexicale
-// tranche seule. kev-0.6b ne discrimine pas assez les indices pour bloquer ; montez le seuil
-// (ex. 0.5) avec kev-4b / kev-8b après l'avoir calibré sur vos propres indices.
+// tranche seule. Calibrez le seuil de kev-4b sur vos propres indices (p affiché côté
+// Opérateur) avant de l'activer (ex. 0.5) ; kev-0.6b ne discrimine pas assez pour bloquer.
 const CLUE_THRESHOLD = Number(process.env.KEV_CLUE_THRESHOLD || 0);
 // Kev est entraîné en anglais : instructions et critères sont formulés en anglais,
 // l'état (mots du plateau, indice) reste en français.

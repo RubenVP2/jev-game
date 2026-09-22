@@ -17,12 +17,14 @@ RUN git init -q . && git fetch -q --depth 1 https://github.com/jaredpalmer/kev.g
 ENV VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH UV_NO_CACHE=1
 RUN uv venv -q /opt/venv \
   && uv pip install -q --index-url "$TORCH_INDEX" "torch==2.8.0" \
-  && uv pip install -q -e ".[serve]"
+  && uv pip install -q -e ".[serve]" \
+  && if echo "$TORCH_INDEX" | grep -q cu; then uv pip install -q flash-linear-attention; fi
 
 COPY serve.py /opt/serve.py
 
+# kev-4b repose sur Qwen3.5-4B (couches DeltaNet) : flash-linear-attention accélère le GPU.
 # Les poids (adaptateur Kev + modèle de base Qwen) sont téléchargés au premier démarrage dans HF_HOME.
-ENV HF_HOME=/data/hf KEV_RUN=jaredpalmer/kev-0.6b PORT=8008
+ENV HF_HOME=/data/hf KEV_RUN=jaredpalmer/kev-4b KEV_DTYPE=bf16 PORT=8008
 VOLUME /data/hf
 EXPOSE 8008
 HEALTHCHECK --interval=30s --timeout=5s --start-period=900s \

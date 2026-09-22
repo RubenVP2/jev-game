@@ -14,7 +14,7 @@ Jeu multijoueur sur navigateur (4 à 8 joueurs, 3 manches, 8 à 12 min) qui mêl
 | Serveur de jeu | Node.js + Express + `ws` (`server/`), serveur autoritaire à 15 Hz |
 | Audio | WebRTC en maillage (signalisation par le WebSocket) + Web Audio : `PannerNode` linéaire 8 m → 20 m, `BiquadFilterNode` passe-bas à 400 Hz derrière un mur, micro coupé pour les joueurs capturés |
 | Arbitrage | `server/kev.js` : client `kev.bool()`, `kev.choice()`, `kev.score()` au-dessus de `POST /v1/systemone` |
-| Modèle local | Service `kev/` : [jaredpalmer/kev](https://github.com/jaredpalmer/kev) (Python, PyTorch), checkpoint Hugging Face `jaredpalmer/kev-0.6b` par défaut |
+| Modèle local | Service `kev/` : [jaredpalmer/kev](https://github.com/jaredpalmer/kev) (Python, PyTorch), checkpoint Hugging Face `jaredpalmer/kev-4b` par défaut (base Qwen3.5-4B) |
 
 ### À propos de Kev
 
@@ -37,14 +37,16 @@ Jeu multijoueur sur navigateur (4 à 8 joueurs, 3 manches, 8 à 12 min) qui mêl
 
 Kev est entraîné en anglais. Les consignes et les critères sont donc en anglais, et l'état (mots, indice) reste en français.
 
-**Ce qui a été mesuré avec `kev-0.6b` sur CPU :**
-- Latence d'environ 0,7 à 1,2 s par question.
-- Le checkpoint **ne discrimine pas assez les indices** : « Chaton » face à CHAT obtient une probabilité aussi élevée qu'un indice légal.
+**Checkpoint par défaut : `kev-4b`.** C'est le plus précis de la collection servable sur un seul GPU (0,837 d'exactitude hors domaine selon sa fiche). Il pèse environ 9 Go.
 
-**Ce que ça implique pour la validation des indices :**
+- **GPU NVIDIA recommandé**, avec au moins 10 Go de VRAM. La fiche annonce environ 0,17 s pour une requête de 5 questions.
+- **En CPU**, le chargement a saturé une machine de 15 Go de RAM. Prévoyez **au moins 32 Go**, et une latence de plusieurs secondes.
+- `kev-0.6b` reste une solution de secours légère (`KEV_RUN=jaredpalmer/kev-0.6b`, environ 3 Go de RAM, 0,7 à 1,2 s par question en CPU). Mais sur nos essais, il **ne discrimine pas les indices** : « Chaton » face à CHAT obtient une probabilité aussi élevée qu'un indice légal.
+
+**Validation des indices :**
 - La **garde lexicale déterministe** (mot identique, racine commune, mot composé, quasi-homophone) tranche d'abord.
-- Kev est **consultatif** par défaut (`KEV_CLUE_THRESHOLD=0`). Sa probabilité s'affiche côté Opérateur.
-- Avec `kev-4b` ou `kev-8b` sur GPU (environ 0,1 s), calibrez un seuil (par exemple `0.5`) pour que Kev puisse bloquer un indice.
+- La probabilité p(légal) de Kev s'affiche côté Opérateur. Kev reste **consultatif** tant que `KEV_CLUE_THRESHOLD=0`.
+- Le seuil de kev-4b n'a pas pu être calibré ici, faute de mémoire suffisante. Jouez quelques indices légaux et illégaux, relevez les p affichés, puis fixez un seuil (par exemple `0.5`) pour que Kev puisse bloquer un indice.
 
 La règle 7.3 reste imposée : un piège force `HUNT_LOUDEST`.
 
@@ -85,7 +87,7 @@ Pour tester seul, ouvrez plusieurs onglets : chaque onglet est un joueur distinc
 ```bash
 git clone https://github.com/jaredpalmer/kev.git && cd kev
 uv sync --extra serve
-uv run --extra serve python /chemin/vers/jev-game/kev/serve.py --run jaredpalmer/kev-0.6b --port 8008
+uv run --extra serve python /chemin/vers/jev-game/kev/serve.py --run jaredpalmer/kev-4b --port 8008
 KEV_URL=http://localhost:8008 npm run dev:server   # dans ce dépôt
 ```
 
@@ -98,16 +100,19 @@ KEV_URL=http://localhost:8008 npm run dev:server   # dans ce dépôt
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
-- Au premier démarrage, le service `kev` télécharge l'adaptateur et le modèle de base Qwen3-0.6B (environ 1,5 Go) dans le volume `kev-hf`.
-- Tant qu'il n'est pas prêt, le jeu utilise l'arbitrage de repli.
-- L'image `kev` utilise PyTorch CPU. Pour un GPU NVIDIA, définissez `KEV_TORCH_INDEX=https://download.pytorch.org/whl/cu128` et `KEV_RUN=jaredpalmer/kev-4b`, puis décommentez le bloc `deploy` dans `docker-compose.yml`.
+- Au premier démarrage, le service `kev` télécharge l'adaptateur et le modèle de base Qwen3.5-4B (environ 9 Go) dans le volume `kev-hf`. Tant qu'il n'est pas prêt, le jeu utilise l'arbitrage de repli.
+- **Avec un GPU NVIDIA :**
+  1. Définissez `KEV_TORCH_INDEX=https://download.pytorch.org/whl/cu128`. L'image installe alors aussi `flash-linear-attention`.
+  2. Décommentez le bloc `deploy` dans `docker-compose.yml`.
+  3. L'hôte doit avoir le NVIDIA Container Toolkit.
+- **Sans GPU :** gardez l'index CPU (l'image par défaut) et prévoyez au moins 32 Go de RAM, ou passez à `KEV_RUN=jaredpalmer/kev-0.6b`.
 
 ## Déploiement Dokploy
 
 1. **Create Project**, puis **Create Service**, puis **Compose**. Choisissez ce dépôt Git, branche `main`, fichier `docker-compose.yml`.
 2. Si besoin, ajoutez dans l'onglet **Environment** les variables de `.env.example` (par exemple `KEV_RUN=jaredpalmer/kev-4b` sur une machine avec GPU).
 3. Dans l'onglet **Domains**, ajoutez votre domaine sur le service **`app`**, port **3000**, avec **HTTPS activé** (Let's Encrypt). Le micro (`getUserMedia`) n'est disponible qu'en HTTPS.
-4. Cliquez sur **Deploy**. Au premier lancement, `kev` télécharge ses poids depuis Hugging Face (quelques minutes). Prévoyez environ 3 Go de RAM pour `kev-0.6b`.
+4. Cliquez sur **Deploy**. Au premier lancement, `kev` télécharge ses poids depuis Hugging Face (environ 9 Go, quelques minutes). Voir les besoins GPU et RAM ci-dessus.
 
 Le WebSocket (`/ws`) passe par Traefik sans configuration supplémentaire. Pour une application Dokploy de type *Dockerfile* (sans le service Kev), définissez le port 3000 et laissez `KEV_URL` vide, ou pointez-la vers un serveur Kev existant.
 
@@ -117,7 +122,7 @@ Le WebSocket (`/ws`) passe par Traefik sans configuration supplémentaire. Pour 
 | --- | --- | --- |
 | `PORT` | `3000` | Port HTTP/WebSocket |
 | `KEV_URL` | *(vide)* | URL du serveur Kev (`/v1/systemone`). Vide = arbitrage de repli uniquement |
-| `KEV_RUN` | `jaredpalmer/kev-0.6b` | Checkpoint servi par le service `kev` |
+| `KEV_RUN` | `jaredpalmer/kev-4b` | Checkpoint servi par le service `kev` |
 | `KEV_TORCH_INDEX` | index CPU de PyTorch | Index PyTorch utilisé au build de `kev` (`…/whl/cu128` pour NVIDIA) |
 | `KEV_API_KEY` | *(vide)* | Jeton Bearer exigé par Kev s'il est défini |
 | `KEV_TIMEOUT_MS` | `3000` | Délai max des appels `choice` et `score` |

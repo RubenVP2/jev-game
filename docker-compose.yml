@@ -33,11 +33,11 @@ services:
     expose:
       - "8008"
     environment:
-      KEV_RUN: ${KEV_RUN:-jaredpalmer/kev-0.6b}
+      KEV_RUN: ${KEV_RUN:-jaredpalmer/kev-4b}
       KEV_API_KEY: ${KEV_API_KEY:-}
     volumes:
       - kev-hf:/data/hf
-    # GPU NVIDIA (kev-4b / kev-8b, latence ~0,1 s) : définissez
+    # GPU NVIDIA recommandé pour kev-4b (~10 Go de VRAM ; en CPU prévoir ≥ 32 Go de RAM) : définissez
     # KEV_TORCH_INDEX=https://download.pytorch.org/whl/cu128 et décommentez :
     # deploy:
     #   resources:
