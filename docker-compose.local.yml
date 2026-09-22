@@ -1,0 +1,5 @@
+# Surcharge pour un test local : docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+services:
+  app:
+    ports:
+      - "3000:3000"

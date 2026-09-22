@@ -1,0 +1,51 @@
+# Déploiement Docker Compose / Dokploy.
+# Dans Dokploy : "Create Service" → "Compose", pointez ce dépôt, puis dans l'onglet
+# "Domains" associez votre domaine au service `app` sur le port 3000 (HTTPS obligatoire
+# pour le micro). Aucun port n'est publié sur l'hôte : Traefik route vers le conteneur.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      PORT: 3000
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      KEV_MODEL: ${KEV_MODEL:-qwen2.5:1.5b}
+      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-2500}
+      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-1500}
+      MIN_PLAYERS: ${MIN_PLAYERS:-4}
+      ROUND_SECONDS: ${ROUND_SECONDS:-180}
+      TURN_URL: ${TURN_URL:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+    depends_on:
+      - ollama
+
+  # Modèle local sous-jacent de Kev (inférence sans réseau externe).
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    # Décommentez pour un GPU NVIDIA (latence < 200 ms visée par la spec) :
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Télécharge le modèle au premier démarrage puis s'arrête.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${KEV_MODEL:-qwen2.5:1.5b}"]
+    restart: "no"
+
+volumes:
+  ollama:
