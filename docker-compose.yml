@@ -10,10 +10,10 @@ services:
       - "3000"
     environment:
       PORT: 3000
-      KEV_URL: ${KEV_URL-http://kev:8008}
+      KEV_URL: ${KEV_URL-http://laya:8008}
       KEV_API_KEY: ${KEV_API_KEY:-}
-      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-3000}
-      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-2000}
+      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-1500}
+      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-1000}
       KEV_CLUE_THRESHOLD: ${KEV_CLUE_THRESHOLD:-0}
       MIN_PLAYERS: ${MIN_PLAYERS:-4}
       ROUND_SECONDS: ${ROUND_SECONDS:-180}
@@ -21,24 +21,25 @@ services:
       TURN_USERNAME: ${TURN_USERNAME:-}
       TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
     depends_on:
-      - kev
+      - laya
 
-  # Kev : modèle de décision « Système 1 » local (contrat /v1/systemone), réseau interne uniquement.
-  kev:
+  # Moteur de décision « Système 1 » : Laya multilingue (français), contrat /v1/systemone,
+  # réseau interne uniquement. ~1,5 Go de RAM, ~200 ms par question sur CPU.
+  # Alternative Kev (anglais, plus lourd) : docker-compose.kev.yml.
+  laya:
     build:
-      context: ./kev
+      context: ./laya
       args:
-        TORCH_INDEX: ${KEV_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+        TORCH_INDEX: ${LAYA_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
     restart: unless-stopped
     expose:
       - "8008"
     environment:
-      KEV_RUN: ${KEV_RUN:-jaredpalmer/kev-4b}
+      LAYA_SUBFOLDER: ${LAYA_SUBFOLDER:-multilingual}
       KEV_API_KEY: ${KEV_API_KEY:-}
     volumes:
-      - kev-hf:/data/hf
-    # GPU NVIDIA recommandé pour kev-4b (~10 Go de VRAM ; en CPU prévoir ≥ 32 Go de RAM) : définissez
-    # KEV_TORCH_INDEX=https://download.pytorch.org/whl/cu128 et décommentez :
+      - laya-hf:/data/hf
+    # GPU NVIDIA (~35 ms par question) : LAYA_TORCH_INDEX=https://download.pytorch.org/whl/cu128 et décommentez :
     # deploy:
     #   resources:
     #     reservations:
@@ -48,4 +49,4 @@ services:
     #           capabilities: [gpu]
 
 volumes:
-  kev-hf:
+  laya-hf:

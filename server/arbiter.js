@@ -1,13 +1,15 @@
-// Cas d'usage A/B/C de la spec : Kev en premier, repli déterministe si indisponible.
+// Cas d'usage A/B/C de la spec : moteur de décision (Laya par défaut, ou Kev — même contrat
+// /v1/systemone) en premier, repli déterministe si indisponible.
 import { kev } from './kev.js';
 
-const CLUE_TIMEOUT = Number(process.env.KEV_CLUE_TIMEOUT_MS || 2000);
-// Seuil de la probabilité « indice légal » (noul). 0 = Kev consultatif : la garde lexicale
-// tranche seule. Calibrez le seuil de kev-4b sur vos propres indices (p affiché côté
-// Opérateur) avant de l'activer (ex. 0.5) ; kev-0.6b ne discrimine pas assez pour bloquer.
+const CLUE_TIMEOUT = Number(process.env.KEV_CLUE_TIMEOUT_MS || 1000);
+// Seuil de p(indice interdit) au-delà duquel le moteur de décision rejette un indice.
+// 0 = consultatif (défaut) : la garde lexicale déterministe tranche seule et p(interdit) est
+// affiché à l'Opérateur. Mesuré avec Laya multilingue : un indice légal (« Xylophonez »)
+// obtient parfois p ≈ 0,92–1,00 selon le plateau, un seuil bloquerait donc des indices légaux.
 const CLUE_THRESHOLD = Number(process.env.KEV_CLUE_THRESHOLD || 0);
-// Kev est entraîné en anglais : instructions et critères sont formulés en anglais,
-// l'état (mots du plateau, indice) reste en français.
+// Les modèles de décision (encodeurs) lisent mieux des phrases que des nombres bruts :
+// l'état est donc rédigé en français naturel.
 
 export const normalize = (s) =>
   String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
@@ -57,16 +59,16 @@ export async function validateOperatorClue(clue, boardWords) {
   if (!lex.ok) return { valid: false, reason: lex.reason, source: 'lexical' };
   try {
     const result = await kev.bool({
-      input: { clue, board: boardWords },
+      input: `Mots du plateau : ${boardWords.join(', ')}. Indice proposé par l'Opérateur : « ${clue} ».`,
       instruction:
-        'Is the clue a legal Codenames clue? It is illegal if it is identical to a board word, shares a direct lexical root with a board word, or is an obvious compound of a board word.',
-      criteria: { true: 'Legal clue', false: 'Illegal clue: identical, same root or compound of a board word' },
+        "L'indice est-il interdit parce qu'il ressemble trop à l'un des mots du plateau (même mot, même famille de mots, ou mot composé) ?",
+      criteria: { true: 'Oui, interdit', false: 'Non, autorisé' },
       threshold: CLUE_THRESHOLD,
       timeoutMs: CLUE_TIMEOUT,
     });
-    return result.value
-      ? { valid: true, source: 'kev', probability: result.probability }
-      : { valid: false, reason: `Kev a rejeté l’indice (p = ${result.probability.toFixed(2)}).`, source: 'kev' };
+    return CLUE_THRESHOLD > 0 && result.value
+      ? { valid: false, reason: `Kev a rejeté l’indice (p(interdit) = ${result.probability.toFixed(2)}).`, source: 'kev' }
+      : { valid: true, source: 'kev', probability: result.probability };
   } catch {
     return { valid: true, source: 'lexical' };
   }
@@ -81,18 +83,28 @@ export function fallbackBehavior({ ambientVolume, lastTerminalStatus }, rand = M
 }
 
 // Cas B — kev.choice
+export function describeContext({ ambientVolume, lastTerminalStatus, activeSector }) {
+  const noise = ambientVolume < 0.2 ? 'silencieuse' : ambientVolume < 0.6 ? 'assez bruyante' : 'extrêmement bruyante, elle crie';
+  const terminal = {
+    NEUTRAL: "Aucun terminal n'a été piraté récemment.",
+    SUCCESS: "L'équipe vient de pirater un terminal avec succès.",
+    TRAP: 'Une alarme de sécurité vient de se déclencher.',
+  }[lastTerminalStatus];
+  return `L'équipe est ${noise}. ${terminal} Secteur actif : ${activeSector}.`;
+}
+
 export async function directMonsterBehavior(context) {
   // Règle 7.3 : un piège de sécurité déclenche toujours la traque du plus bruyant.
   if (context.lastTerminalStatus === 'TRAP') return 'HUNT_LOUDEST';
   try {
     const decision = await kev.choice({
-      input: context,
-      instruction: 'Pick the priority behavior of the containment entity given the danger and the noise level.',
+      input: describeContext(context),
+      instruction: 'Quel comportement doit adopter le monstre ?',
       choices: {
-        PATROL_DEFAULT: 'Everything is quiet: routine patrol',
-        INVESTIGATE_SECTOR: 'A terminal was hacked or there is moderate noise: search the active sector',
-        HUNT_LOUDEST: 'A security trap fired or the team is very loud: sprint to the loudest player',
-        LOCKDOWN_VENT: 'The team is making steady progress: ambush them from a vent',
+        PATROL_DEFAULT: 'Tout est calme : ronde de routine',
+        INVESTIGATE_SECTOR: "Un terminal vient d'être piraté : fouiller ce secteur",
+        HUNT_LOUDEST: 'Alarme déclenchée ou équipe très bruyante : traquer le joueur le plus bruyant',
+        LOCKDOWN_VENT: 'Rien de notable depuis longtemps : tendre une embuscade depuis un conduit',
       },
     });
     return decision.choice;
@@ -105,16 +117,16 @@ export async function directMonsterBehavior(context) {
 export async function evaluateMistakeSeverity(selectedWord, targetClue, alignment) {
   try {
     const assessment = await kev.score({
-      input: `The team selected "${selectedWord}" while trying to follow the clue "${targetClue}". The terminal was ${alignment === 'TRAP' ? 'a security trap' : 'neutral data'}.`,
-      instruction: 'Rate how dangerous and semantically incoherent this mistake is.',
+      input: `Indice : « ${targetClue} ». Mot choisi par l'équipe : « ${selectedWord} ». Le terminal était ${alignment === 'TRAP' ? 'un piège de sécurité' : 'une donnée neutre'}.`,
+      instruction: "À quel point le mot choisi est-il éloigné de l'indice ?",
       min: 1,
       max: 5,
       levels: [
-        'Slight divergence: the word is close to the clue',
-        'Minor mistake',
-        'Serious mistake',
-        'Severe mistake: the word is unrelated to the clue',
-        'Critical error: antivirus triggered',
+        'Très proche, erreur compréhensible',
+        'Assez proche',
+        'Moyennement lié',
+        'Peu lié',
+        'Aucun rapport, erreur absurde',
       ],
     });
     // Un piège reste au minimum une erreur sérieuse.

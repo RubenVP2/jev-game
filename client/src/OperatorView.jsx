@@ -66,7 +66,7 @@ export default function OperatorView({ state, net, voice, map, clueError, clearC
             </button>
           </form>
           {clueError && <p className="error">Kev : {clueError}</p>}
-          {state.clue && <p className="muted">Indice actif : « {state.clue.word} » {state.clue.count} — validé en {state.clue.ms} ms ({state.clue.source}{state.clue.kevP != null && `, Kev p(légal) = ${state.clue.kevP.toFixed(2)}`}).</p>}
+          {state.clue && <p className="muted">Indice actif : « {state.clue.word} » {state.clue.count} — validé en {state.clue.ms} ms ({state.clue.source}{state.clue.kevP != null && `, Kev p(interdit) = ${state.clue.kevP.toFixed(2)}`}).</p>}
         </section>
         <section className="panel op-map-wrap">
           <h3>Caméras du complexe</h3>

@@ -1,0 +1,31 @@
+# Variante : moteur de décision Kev (jaredpalmer/kev, anglais) à la place de Laya.
+#   docker compose -f docker-compose.yml -f docker-compose.kev.yml up -d --build
+# kev-4b : GPU NVIDIA ~10 Go de VRAM recommandé (sinon ≥ 32 Go de RAM) ; kev-0.6b tient en ~3 Go.
+# Remarque : les consignes de server/arbiter.js sont rédigées en français pour Laya ;
+# Kev étant entraîné en anglais, ses réponses y sont moins fiables.
+services:
+  app:
+    environment:
+      KEV_URL: http://kev:8008
+      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-3000}
+      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-2000}
+      KEV_CLUE_THRESHOLD: ${KEV_CLUE_THRESHOLD:-0}
+    depends_on:
+      - kev
+
+  kev:
+    build:
+      context: ./kev
+      args:
+        TORCH_INDEX: ${KEV_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+    restart: unless-stopped
+    expose:
+      - "8008"
+    environment:
+      KEV_RUN: ${KEV_RUN:-jaredpalmer/kev-4b}
+      KEV_API_KEY: ${KEV_API_KEY:-}
+    volumes:
+      - kev-hf:/data/hf
+
+volumes:
+  kev-hf:

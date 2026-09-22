@@ -1,6 +1,7 @@
-// Client de Kev (jaredpalmer/kev) : modèle de décision « Système 1 » servi localement.
-// Kev ne génère pas de texte : un état + des questions typées entrent, une distribution
-// de probabilités calibrée par question sort, en une seule passe avant (contrat TypeSafe
+// Client du moteur de décision « Système 1 » servi localement : Laya (convaiinnovations/laya,
+// multilingue, par défaut) ou Kev (jaredpalmer/kev). Aucun des deux ne génère de texte :
+// un état + des questions typées entrent, une distribution de probabilités calibrée par
+// question sort, en une seule passe avant (contrat TypeSafe
 // POST /v1/systemone, types noul / choice / score). Toutes les questions d'une requête
 // sont évaluées en parallèle, pour à peu près la latence d'une seule.
 // Cette surcouche expose l'API de la spec : kev.bool(), kev.choice(), kev.score().
@@ -8,7 +9,7 @@
 const KEV_URL = (process.env.KEV_URL || '').replace(/\/$/, '');
 const API_KEY = process.env.KEV_API_KEY || '';
 const MODEL = process.env.KEV_MODEL || 'kev-latest';
-const DEFAULT_TIMEOUT = Number(process.env.KEV_TIMEOUT_MS || 3000);
+const DEFAULT_TIMEOUT = Number(process.env.KEV_TIMEOUT_MS || 1500);
 
 export class KevUnavailable extends Error {}
 
