@@ -19,7 +19,7 @@ test('accepte un indice sémantique propre', () => {
   assert.equal(lexicalClueCheck('Félin', board).ok, true);
 });
 
-test('validateOperatorClue fonctionne sans Ollama (repli)', async () => {
+test('validateOperatorClue fonctionne sans Kev (repli)', async () => {
   assert.equal((await validateOperatorClue('Félin', board)).valid, true);
   assert.equal((await validateOperatorClue('Chaton', board)).valid, false);
 });
@@ -36,4 +36,34 @@ test('tous les terminaux et l’ascenseur sont accessibles depuis le spawn', () 
     assert.ok(ok, `terminal ${t.id} inaccessible`);
   }
   assert.ok(findPath(SPAWN.x, SPAWN.y, ELEVATOR.x0, ELEVATOR.y0).length);
+});
+
+test('le client kev parle le contrat /v1/systemone', async () => {
+  const http = await import('node:http');
+  let seen;
+  const srv = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => (b += c));
+    req.on('end', () => {
+      seen = JSON.parse(b);
+      const q = seen.questions.q;
+      const a = q.type === 'noul' ? { type: 'noul', noul: 0.2 }
+        : q.type === 'choice' ? { type: 'choice', choice: Object.keys(q.criteria)[2], confidence: 0.7, probabilities: {} }
+        : { type: 'score', score: 3.4, legend: {}, probabilities: {}, confidence: 0.6 };
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ model: 'kev-latest', answers: { q: a }, usage: {}, latency_ms: 1 }));
+    });
+  });
+  await new Promise((r) => srv.listen(0, r));
+  process.env.KEV_URL = `http://127.0.0.1:${srv.address().port}`;
+  const { kev } = await import(`./kev.js?t=${Date.now()}`);
+  assert.deepEqual(await kev.bool({ input: { a: 1 }, instruction: 'x' }), { value: false, probability: 0.2 });
+  assert.equal(seen.model, 'kev-latest');
+  assert.deepEqual(seen.state, { a: 1 });
+  assert.equal((await kev.choice({ input: 's', instruction: 'x', choices: ['A', 'B', 'C'] })).choice, 'C');
+  assert.deepEqual(seen.questions.q.criteria, { A: '', B: '', C: '' });
+  const s = await kev.score({ input: 's', instruction: 'x', min: 1, max: 5 });
+  assert.equal(s.score, 4);
+  assert.equal(seen.questions.q.criteria.length, 5);
+  srv.close();
 });

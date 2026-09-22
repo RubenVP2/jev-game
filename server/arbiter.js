@@ -1,7 +1,13 @@
 // Cas d'usage A/B/C de la spec : Kev en premier, repli déterministe si indisponible.
 import { kev } from './kev.js';
 
-const CLUE_TIMEOUT = Number(process.env.KEV_CLUE_TIMEOUT_MS || 1500);
+const CLUE_TIMEOUT = Number(process.env.KEV_CLUE_TIMEOUT_MS || 2000);
+// Seuil de la probabilité « indice légal » (noul). 0 = Kev consultatif : la garde lexicale
+// tranche seule. kev-0.6b ne discrimine pas assez les indices pour bloquer ; montez le seuil
+// (ex. 0.5) avec kev-4b / kev-8b après l'avoir calibré sur vos propres indices.
+const CLUE_THRESHOLD = Number(process.env.KEV_CLUE_THRESHOLD || 0);
+// Kev est entraîné en anglais : instructions et critères sont formulés en anglais,
+// l'état (mots du plateau, indice) reste en français.
 
 export const normalize = (s) =>
   String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
@@ -51,14 +57,16 @@ export async function validateOperatorClue(clue, boardWords) {
   if (!lex.ok) return { valid: false, reason: lex.reason, source: 'lexical' };
   try {
     const result = await kev.bool({
-      input: `Indice proposé: "${clue}". Mots présents sur le plateau: ${JSON.stringify(boardWords)}.`,
+      input: { clue, board: boardWords },
       instruction:
-        "Détermine si l'indice est valide selon les règles de Codenames : aucun mot identique, aucune racine lexicale directe avec un mot présent sur le plateau, aucun mot composé évident.",
+        'Is the clue a legal Codenames clue? It is illegal if it is identical to a board word, shares a direct lexical root with a board word, or is an obvious compound of a board word.',
+      criteria: { true: 'Legal clue', false: 'Illegal clue: identical, same root or compound of a board word' },
+      threshold: CLUE_THRESHOLD,
       timeoutMs: CLUE_TIMEOUT,
     });
     return result.value
-      ? { valid: true, source: 'kev' }
-      : { valid: false, reason: 'Kev a rejeté l’indice (triche lexicale détectée).', source: 'kev' };
+      ? { valid: true, source: 'kev', probability: result.probability }
+      : { valid: false, reason: `Kev a rejeté l’indice (p = ${result.probability.toFixed(2)}).`, source: 'kev' };
   } catch {
     return { valid: true, source: 'lexical' };
   }
@@ -78,10 +86,14 @@ export async function directMonsterBehavior(context) {
   if (context.lastTerminalStatus === 'TRAP') return 'HUNT_LOUDEST';
   try {
     const decision = await kev.choice({
-      input: JSON.stringify(context),
-      instruction:
-        "Sélectionne le comportement prioritaire pour l'entité de confinement en fonction du danger et du niveau sonore.",
-      choices: MONSTER_BEHAVIORS,
+      input: context,
+      instruction: 'Pick the priority behavior of the containment entity given the danger and the noise level.',
+      choices: {
+        PATROL_DEFAULT: 'Everything is quiet: routine patrol',
+        INVESTIGATE_SECTOR: 'A terminal was hacked or there is moderate noise: search the active sector',
+        HUNT_LOUDEST: 'A security trap fired or the team is very loud: sprint to the loudest player',
+        LOCKDOWN_VENT: 'The team is making steady progress: ambush them from a vent',
+      },
     });
     return decision.choice;
   } catch {
@@ -93,11 +105,17 @@ export async function directMonsterBehavior(context) {
 export async function evaluateMistakeSeverity(selectedWord, targetClue, alignment) {
   try {
     const assessment = await kev.score({
-      input: `L'équipe a sélectionné "${selectedWord}" en tentant de suivre l'indice "${targetClue}".`,
-      instruction:
-        "Évalue la dangerosité et l'incohérence sémantique de cette erreur sur une échelle de 1 (légère divergence) à 5 (erreur critique/antivirus déclenché).",
+      input: `The team selected "${selectedWord}" while trying to follow the clue "${targetClue}". The terminal was ${alignment === 'TRAP' ? 'a security trap' : 'neutral data'}.`,
+      instruction: 'Rate how dangerous and semantically incoherent this mistake is.',
       min: 1,
       max: 5,
+      levels: [
+        'Slight divergence: the word is close to the clue',
+        'Minor mistake',
+        'Serious mistake',
+        'Severe mistake: the word is unrelated to the clue',
+        'Critical error: antivirus triggered',
+      ],
     });
     // Un piège reste au minimum une erreur sérieuse.
     return alignment === 'TRAP' ? Math.max(3, assessment.score) : assessment.score;

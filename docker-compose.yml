@@ -10,25 +10,35 @@ services:
       - "3000"
     environment:
       PORT: 3000
-      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
-      KEV_MODEL: ${KEV_MODEL:-qwen2.5:1.5b}
-      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-2500}
-      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-1500}
+      KEV_URL: ${KEV_URL-http://kev:8008}
+      KEV_API_KEY: ${KEV_API_KEY:-}
+      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-3000}
+      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-2000}
+      KEV_CLUE_THRESHOLD: ${KEV_CLUE_THRESHOLD:-0}
       MIN_PLAYERS: ${MIN_PLAYERS:-4}
       ROUND_SECONDS: ${ROUND_SECONDS:-180}
       TURN_URL: ${TURN_URL:-}
       TURN_USERNAME: ${TURN_USERNAME:-}
       TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
     depends_on:
-      - ollama
+      - kev
 
-  # Modèle local sous-jacent de Kev (inférence sans réseau externe).
-  ollama:
-    image: ollama/ollama:latest
+  # Kev : modèle de décision « Système 1 » local (contrat /v1/systemone), réseau interne uniquement.
+  kev:
+    build:
+      context: ./kev
+      args:
+        TORCH_INDEX: ${KEV_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
     restart: unless-stopped
+    expose:
+      - "8008"
+    environment:
+      KEV_RUN: ${KEV_RUN:-jaredpalmer/kev-0.6b}
+      KEV_API_KEY: ${KEV_API_KEY:-}
     volumes:
-      - ollama:/root/.ollama
-    # Décommentez pour un GPU NVIDIA (latence < 200 ms visée par la spec) :
+      - kev-hf:/data/hf
+    # GPU NVIDIA (kev-4b / kev-8b, latence ~0,1 s) : définissez
+    # KEV_TORCH_INDEX=https://download.pytorch.org/whl/cu128 et décommentez :
     # deploy:
     #   resources:
     #     reservations:
@@ -37,15 +47,5 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-  # Télécharge le modèle au premier démarrage puis s'arrête.
-  ollama-pull:
-    image: ollama/ollama:latest
-    depends_on:
-      - ollama
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${KEV_MODEL:-qwen2.5:1.5b}"]
-    restart: "no"
-
 volumes:
-  ollama:
+  kev-hf:

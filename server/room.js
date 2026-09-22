@@ -195,7 +195,7 @@ export class Room {
     this.cluePending = false;
     if (gameId !== this.gameId || round !== this.round || this.phase !== 'CLUE') return;
     if (!res.valid) return this.send(player, { t: 'clueRejected', reason: res.reason });
-    this.clue = { word: String(word).trim().toUpperCase(), count, ms: Date.now() - t0, source: res.source };
+    this.clue = { word: String(word).trim().toUpperCase(), count, ms: Date.now() - t0, source: res.source, kevP: res.probability };
     this.guessesLeft = count + 1;
     this.phase = 'FIELD';
     this.addLog(`Indice transmis : « ${this.clue.word} » ${count}`, 'clue');
