@@ -20,7 +20,9 @@ export const CONFIG = {
 const TOTAL_BANKS = CONFIG.ROUNDS * CONFIG.TARGETS_PER_ROUND;
 const NEED_BANKS = Math.ceil(TOTAL_BANKS * 0.75);
 const TICK_MS = 66;
-const MONSTER_SPEED = { PATROL_DEFAULT: 2.2, INVESTIGATE_SECTOR: 3.0, HUNT_LOUDEST: 3.9, LOCKDOWN_VENT: 0 };
+const MONSTER_SPEED = { PATROL_DEFAULT: 2.0, INVESTIGATE_SECTOR: 2.8, HUNT_LOUDEST: 3.5, LOCKDOWN_VENT: 0 };
+// Réglage d'équilibrage global de la vitesse du Patrouilleur.
+const MONSTER_SPEED_SCALE = Number(process.env.MONSTER_SPEED_SCALE || 1);
 const ALIGNMENTS = [
   ...Array(6).fill('NEUTRAL'), ...Array(4).fill('TARGET'), ...Array(5).fill('TRAP'), 'FATAL',
 ];
@@ -373,7 +375,9 @@ export class Room {
         const dest = pick(pool);
         m.path = findPath(m.x, m.y, dest.x, dest.y);
       }
-      let step = MONSTER_SPEED[m.behavior] * (1 + 0.06 * (this.crisis - 1)) * dt;
+      // La crise accélère le Patrouilleur, sans jamais dépasser un joueur qui court : on peut toujours fuir.
+      const speed = Math.min(MONSTER_SPEED[m.behavior] * (1 + 0.04 * (this.crisis - 1)), CONFIG.PLAYER_SPEED * 0.95);
+      let step = speed * MONSTER_SPEED_SCALE * dt;
       while (step > 0 && m.path.length) {
         const n = m.path[0];
         const tx = n.x + 0.5, ty = n.y + 0.5;

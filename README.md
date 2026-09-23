@@ -138,6 +138,7 @@ Le WebSocket (`/ws`) passe par Traefik sans configuration supplémentaire. Pour 
 | `ROUND_SECONDS` | `180` | Compte à rebours d'une manche |
 | `EXTRACTION_SECONDS` | `30` | Fenêtre d'extraction et de vote |
 | `DIRECTOR_INTERVAL` | `7` | Période (s) du directeur d'IA |
+| `MONSTER_SPEED_SCALE` | `1` | Multiplicateur de vitesse du Patrouilleur (équilibrage) |
 | `STUN_URLS` | `stun:stun.l.google.com:19302` | Serveurs STUN (séparés par des virgules) |
 | `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | *(vide)* | Serveur TURN pour les réseaux mobiles ou NAT stricts |
 
