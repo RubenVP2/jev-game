@@ -52,8 +52,9 @@ llm:
   # Each task tries its chain in order. For structured output one model owns the whole
   # write -> validate -> repair loop; the next model only takes over from scratch.
   # Entries whose provider has no API key are skipped, so one key is enough to run.
-  # Model ids checked against the live OpenRouter and OrcaRouter catalogs (Oct 2026); the Google
-  # ids are the ones both routers mirror from Google AI Studio. If a provider no longer knows an id,
+  # Model ids checked against the live OpenRouter and OrcaRouter catalogs (Oct 2026). Google ids
+  # from the Gemini API release notes (ai.google.dev/gemini-api/docs/changelog): gemini-3.8-flash is
+  # GA, gemini-pro-latest is the documented alias of the newest Pro model. If a provider no longer knows an id,
   # the newest model of the same family is used automatically and `veille doctor` reports it.
   tasks:
     triage:   # editorial ranking of candidate stories (fast model)
