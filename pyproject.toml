@@ -1,0 +1,48 @@
+[project]
+name = "veille"
+version = "0.1.0"
+description = "Tech watch pipeline: GitHub Trending, Hacker News and Reddit turned into Threads and TikTok carousels, validated on Discord."
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.10,<4",
+    "beautifulsoup4>=4.12",
+    "discord.py>=2.4",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "openai>=1.40",
+    "playwright>=1.45",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "respx>=0.21", "ruff>=0.6"]
+
+[project.scripts]
+veille = "veille.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+veille = ["carousel/templates/*.html", "carousel/*.json", "harness/exemplars/*.json", "harness/eval/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["veille", "conftest", "test_harness", "test_pipeline", "test_render"]

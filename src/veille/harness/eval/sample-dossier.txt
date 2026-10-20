@@ -1,0 +1,61 @@
+SOURCE: hackernews
+
+TITLE: Show HN: Ledgerline – an append-only log store with per-key compaction (fictional evaluation sample)
+
+URL: https://github.com/example/ledgerline
+
+DISCUSSION: https://news.ycombinator.com/item?id=1
+
+SIGNAL: score=612 comments=184 tags=
+
+REPOSITORY METADATA: {'description': 'Append-only log store with per-key compaction', 'stargazers_count': 2310, 'forks_count': 74, 'license': {'name': 'Apache License 2.0'}, 'language': 'Rust'}
+
+README:
+# Ledgerline
+
+Ledgerline is an embedded, append-only log store written in Rust. Every write is appended to a segment file;
+an in-memory index maps each key to the offset of its latest record. Compaction runs per key instead of per
+segment: when a key accumulates more than `compact_after` superseded records, only that key's live record is
+rewritten into the active segment and the old offsets are marked dead.
+
+## Why per-key compaction
+
+Segment-level compaction (as in classic LSM trees) rewrites whole files even when a single hot key churns.
+Ledgerline tracks garbage per key, so a hot key does not force rewriting cold data.
+
+## Benchmarks
+
+Measured on a single NVMe SSD, 16 threads, 1 KiB values, 10 million keys with a Zipfian access pattern:
+
+| Workload | Ledgerline | RocksDB 9.x (default options) |
+|---|---|---|
+| Write throughput | 1.9 million ops/s | 0.8 million ops/s |
+| p99 write latency | 0.4 ms | 2.1 ms |
+| Write amplification | 1.3 | 7.5 |
+
+Read throughput is within 10% of RocksDB on this workload. We have not benchmarked range scans: keys are
+not stored in sorted order, so range scans require a full index walk.
+
+## Usage
+
+```rust
+let store = Ledgerline::open("data/", Options::default())?;
+store.put(b"user:42", b"{\"plan\":\"pro\"}")?;
+let value = store.get(b"user:42")?;
+store.flush()?;
+```
+
+## Limitations
+
+- The whole index lives in memory: about 48 bytes per key.
+- No transactions across keys.
+- Range scans are not supported efficiently.
+
+PRACTITIONER COMMENTS (opinions, not facts):
+48 bytes per key means 10 million keys is fine but 1 billion keys needs ~48 GB of RAM just for the index. That is the real constraint, not throughput.
+---
+Comparing against RocksDB default options is a bit unfair, nobody runs RocksDB with defaults for a write-heavy Zipfian workload. Tuned universal compaction would close part of that gap.
+---
+This is basically Bitcask with smarter garbage accounting. Nothing wrong with that, Bitcask is a great design when your keyspace fits in memory.
+---
+No range scans is a dealbreaker for anything time-series, but for session stores and feature flags this looks ideal.
