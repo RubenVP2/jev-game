@@ -42,18 +42,25 @@ class Doctor:
     async def run(self) -> list[Check]:
         self.check_config()
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            await asyncio.gather(
-                self.check_llm(),
-                self.check_sources(client),
-                self.check_discord(client),
-                self.check_threads(client),
-                self.check_public_url(client),
-            )
-        self.check_tiktok()
+            checks = [self.check_llm(), self.check_sources(client), self.check_discord(client)]
+            if self.backend == "uploadpost":
+                checks.append(self.check_uploadpost(client))
+            else:
+                checks += [self.check_threads(client), self.check_public_url(client)]
+            await asyncio.gather(*checks)
+        if self.backend != "uploadpost":
+            self.check_tiktok()
         await self.check_render()
-        order = ["config", "llm", "discord", "media", "threads", "tiktok", "sources", "render"]
+        order = ["config", "llm", "discord", "publish", "media", "threads", "tiktok", "sources", "render"]
         self.checks.sort(key=lambda c: order.index(c.area) if c.area in order else len(order))
         return self.checks
+
+    @property
+    def backend(self) -> str:
+        backend = self.settings.app.publish.backend
+        if backend == "auto":
+            return "uploadpost" if self.secrets.uploadpost_api_key else "direct"
+        return backend
 
     # --- checks --------------------------------------------------------------
 
@@ -139,9 +146,9 @@ class Doctor:
             self.add("discord", FAIL, "DISCORD_BOT_TOKEN is missing")
             return
         if not self.secrets.channel_id:
-            self.add("discord", FAIL, "DISCORD_CHANNEL_ID is missing")
+            self.add("discord", OK, "no DISCORD_CHANNEL_ID: the bot uses (or creates) #veille-drafts")
         if not self.secrets.allowed_user_ids:
-            self.add("discord", FAIL, "DISCORD_ALLOWED_USER_IDS is missing: nobody could approve drafts")
+            self.add("discord", OK, "no DISCORD_ALLOWED_USER_IDS: the server owner reviews drafts")
         if not self.live:
             return
         headers = {"Authorization": f"Bot {self.secrets.discord_bot_token}"}
@@ -150,12 +157,42 @@ class Doctor:
             self.add("discord", FAIL, f"bot token rejected (HTTP {resp.status_code})")
             return
         self.add("discord", OK, f"bot {resp.json().get('username')!r}")
+        guilds = await client.get("https://discord.com/api/v10/users/@me/guilds", headers=headers)
+        if guilds.status_code == 200 and not guilds.json():
+            from .bot import invite_url
+
+            self.add("discord", FAIL, f"the bot is in no server yet, open this link to invite it: {invite_url(resp.json().get('id'))}")
         if self.secrets.channel_id:
             resp = await client.get(f"https://discord.com/api/v10/channels/{self.secrets.channel_id}", headers=headers)
             if resp.status_code == 200:
                 self.add("discord", OK, f"channel #{resp.json().get('name')}")
             else:
                 self.add("discord", FAIL, f"channel not accessible (HTTP {resp.status_code}): invite the bot and check the ID")
+
+    async def check_uploadpost(self, client: httpx.AsyncClient) -> None:
+        from .publishers.uploadpost import UploadPostPublisher
+
+        cfg = self.settings.app.publish
+        wanted = [p for p, on in (("threads", cfg.threads.enabled), ("tiktok", cfg.tiktok.enabled)) if on]
+        self.add("publish", OK, f"backend Upload-Post for {', '.join(wanted)} (no domain or developer app needed)")
+        if not self.live:
+            return
+        publisher = UploadPostPublisher(self.settings, Database(self.settings.db_path), client)
+        try:
+            profile = await publisher.profile(refresh=True)
+        except Exception as exc:  # noqa: BLE001
+            self.add("publish", FAIL, f"Upload-Post: {exc}. Check UPLOADPOST_API_KEY")
+            return
+        accounts = publisher.accounts(profile)
+        self.add("publish", OK, f"Upload-Post profile {profile.get('username')!r}")
+        for platform in wanted:
+            account = accounts.get(platform)
+            if not account:
+                self.add("publish", FAIL, f"{platform}: not connected in the Upload-Post dashboard (app.upload-post.com)")
+            elif account.get("reauth_required"):
+                self.add("publish", FAIL, f"{platform}: reconnect it in the Upload-Post dashboard (reauth required)")
+            else:
+                self.add("publish", OK, f"{platform}: connected as {account.get('handle') or account.get('username')}")
 
     async def check_threads(self, client: httpx.AsyncClient) -> None:
         if not self.settings.app.publish.threads.enabled:

@@ -24,39 +24,39 @@ Reddit          ─┘                (anti-répétition)                 │
      TikTok (carrousel photo)                                            Regenerate · Another topic · Reject
 ```
 
-## Démarrage : il ne reste que les clés à fournir
+## Démarrage : trois clés
 
 ```bash
 git clone <repo> veille && cd veille
-cp .env.example .env          # 1. remplis les clés (section REQUIRED au minimum)
-docker compose up -d --build  # 2. lance le service
-docker compose exec app veille doctor   # 3. vérifie tout : clés, modèles, Discord, Threads, TikTok, HTTPS, rendu
+cp .env.example .env                     # colle les 3 clés de la section REQUIRED
+docker compose up -d --build
+docker compose exec app veille doctor    # vérifie clés, modèles, Discord, comptes connectés, rendu
 ```
 
-`veille doctor` teste chaque clé et **chaque modèle configuré** (un court appel réel), l'accès au salon Discord, le token Threads, la connexion TikTok, l'URL publique et le rendu des slides. Il dit précisément quoi corriger.
+| Clé | Où l'obtenir |
+|---|---|
+| Une clé LLM (`GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY` ou `ORCAROUTER_API_KEY`) | https://aistudio.google.com/apikey · https://openrouter.ai/keys · https://orcarouter.ai. Avec plusieurs clés, la bascule entre fournisseurs est automatique. |
+| `DISCORD_BOT_TOKEN` | https://discord.com/developers/applications → *New Application* → *Bot* → *Reset Token*. `veille doctor` affiche ensuite le lien d'invitation avec les bonnes permissions. |
+| `UPLOADPOST_API_KEY` | https://app.upload-post.com : crée un compte, connecte Threads et TikTok dans le tableau de bord, puis copie la clé API. |
 
-Au démarrage, le bot poste son état dans le salon Discord : prochains créneaux, fournisseurs LLM actifs, plateformes connectées.
+C'est tout :
+- **Discord** : le bot crée (ou réutilise) le salon `#veille-drafts`, et le propriétaire du serveur valide les brouillons. Pour changer, renseigne `DISCORD_CHANNEL_ID` et `DISCORD_ALLOWED_USER_IDS`.
+- **Upload-Post** publie avec ses propres apps Meta et TikTok, déjà validées : pas de domaine, pas d'app développeur, pas de vérification DNS. Les posts TikTok sont publics directement, et le lien source part en premier commentaire Threads. Upload-Post est un service tiers payant au-delà de son offre d'essai : vérifie ses tarifs.
+- **Pseudo** : celui affiché sur les slides est celui du compte Threads connecté, sauf si tu en fixes un dans `brand.handle`.
 
-### Contenu du `.env`
+Au démarrage, le bot poste son état dans le salon : prochains créneaux, fournisseurs LLM actifs, mode de publication.
 
-| Variable | Obligatoire | Rôle |
-|---|---|---|
-| `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` / `ORCAROUTER_API_KEY` | au moins une | LLM. Avec plusieurs clés, la bascule entre fournisseurs est automatique |
-| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_ALLOWED_USER_IDS` | oui | Validation des brouillons |
-| `DOMAIN` | oui | Domaine qui pointe vers le serveur. Les slides y sont servies en HTTPS |
-| `THREADS_APP_ID`, `THREADS_APP_SECRET` | pour Threads | Puis `/connect Threads` sur Discord : un clic d'autorisation |
-| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | pour TikTok | Puis `/connect TikTok` sur Discord : un clic d'autorisation |
-| `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | conseillé | Sans elles, Reddit bloque souvent les serveurs |
-| `GITHUB_TOKEN` | optionnel | Relève la limite d'appels à l'API GitHub pour lire les README |
+Options : des identifiants Reddit (conseillé, Reddit bloque souvent les serveurs) et un `GITHUB_TOKEN`. Voir `.env.example`.
 
-**Une plateforme sans identifiants est ignorée**, pas en erreur : tu peux démarrer avec Threads seul et ajouter TikTok plus tard.
+### Alternative sans Upload-Post : publication « directe »
 
-Pas de token à copier-coller :
-- `/connect` sur Discord envoie un lien d'autorisation ;
-- après le clic, le token est stocké, puis rafraîchi automatiquement (Threads : 60 jours, TikTok : 24 h avec un token de renouvellement valable un an) ;
-- le bot confirme dans le salon.
+Avec tes propres apps Meta et TikTok (`config.yaml` → `publish.backend: direct`, ou simplement sans `UPLOADPOST_API_KEY`) :
+- il faut un domaine qui pointe vers le serveur, avec la vérification de domaine TikTok ;
+- il faut lancer `docker compose --profile direct up -d` pour avoir le HTTPS via Caddy ;
+- les comptes se connectent avec `/connect Threads` et `/connect TikTok` sur Discord ;
+- tant que ton app TikTok n'a pas passé l'audit, les posts TikTok arrivent en brouillon dans l'app.
 
-Le pseudo affiché sur les slides est celui du compte Threads connecté, sauf si tu en fixes un dans `brand.handle`.
+Voir la section « Publication directe » plus bas.
 
 **Identifiants de modèles** : ceux d'OpenRouter et d'OrcaRouter dans `config.yaml` ont été vérifiés dans leurs catalogues en ligne. Ceux de Google AI Studio viennent des notes de version officielles de l'API Gemini : `gemini-3.8-flash` est en disponibilité générale, et `gemini-pro-latest` est l'alias documenté du modèle Pro le plus récent. Si un fournisseur retire ou renomme un modèle, le pipeline prend automatiquement le plus récent de la même famille dans son catalogue (`claude-sonnet-*`, `gemini-*-pro`…) et `veille doctor` signale le remplacement.
 
@@ -144,15 +144,27 @@ Tout ce qui n'est pas secret se règle ici :
 
 Les identifiants de modèles évoluent vite. `veille doctor` signale tout identifiant inconnu d'un fournisseur.
 
-## Mise en place des comptes
+## Comptes
 
 ### Discord
-1. Crée une application sur https://discord.com/developers/applications, ajoute un bot et copie son token dans `DISCORD_BOT_TOKEN`.
-2. Dans OAuth2 → URL Generator, coche les scopes `bot` et `applications.commands`, et les permissions *Send Messages*, *Attach Files*, *Embed Links* et *Read Message History*. Ouvre l'URL générée pour inviter le bot sur ton serveur.
-3. Active le mode développeur de Discord, puis fais un clic droit pour copier l'ID du salon (`DISCORD_CHANNEL_ID`) et ton ID utilisateur (`DISCORD_ALLOWED_USER_IDS`).
+1. Crée une application sur https://discord.com/developers/applications, ouvre *Bot*, clique sur *Reset Token* et copie le token dans `DISCORD_BOT_TOKEN`.
+2. Lance `veille doctor` : il affiche le lien d'invitation avec les bonnes permissions (dont la création du salon `#veille-drafts`). Ouvre-le pour ajouter le bot à ton serveur.
+3. Optionnel : `DISCORD_CHANNEL_ID` et `DISCORD_ALLOWED_USER_IDS` (mode développeur de Discord, clic droit, *Copier l'identifiant*).
+
+### Upload-Post
+1. Crée un compte sur https://app.upload-post.com.
+2. Connecte tes comptes Threads et TikTok dans le tableau de bord.
+3. Copie la clé API dans `UPLOADPOST_API_KEY`.
+
+`veille doctor` vérifie la clé et indique quels comptes sont connectés ou à reconnecter.
+
+### Reddit (conseillé)
+Crée une app de type *script* sur https://www.reddit.com/prefs/apps, puis remplis `REDDIT_CLIENT_ID` et `REDDIT_CLIENT_SECRET`.
+
+## Publication directe (sans Upload-Post)
 
 ### Domaine et HTTPS
-Crée un enregistrement DNS A de `DOMAIN` vers l'IP du serveur, et ouvre les ports 80 et 443. Caddy obtient le certificat tout seul.
+Crée un enregistrement DNS A de `DOMAIN` vers l'IP du serveur, ouvre les ports 80 et 443, puis lance `docker compose --profile direct up -d`. Caddy obtient le certificat tout seul.
 
 ### Threads
 1. Crée une app Meta avec le cas d'usage « Access the Threads API » : https://developers.facebook.com/apps
@@ -161,22 +173,13 @@ Crée un enregistrement DNS A de `DOMAIN` vers l'IP du serveur, et ouvre les por
 
 Alternative sans OAuth : un token longue durée généré dans le tableau de bord, à mettre dans `THREADS_ACCESS_TOKEN`.
 
-La publication se fait en deux temps :
-1. Le post principal, avec le carrousel des slides.
-2. Une réponse contenant le lien vers la source. Le lien est hors du post principal pour ne pas pénaliser sa portée.
-
 ### TikTok
 1. Crée une app sur https://developers.tiktok.com avec *Login Kit* et *Content Posting API*, et les scopes `user.info.basic`, `video.upload` et `video.publish`.
 2. Configure le redirect URI `https://DOMAIN/tiktok/callback`.
 3. **Vérifie le domaine** (enregistrement DNS TXT) : TikTok ne récupère les photos que depuis un domaine vérifié.
 4. Tape `/connect TikTok` sur Discord, ouvre le lien et autorise l'accès.
 
-Deux modes, réglés dans `publish.tiktok.mode` :
-- `MEDIA_UPLOAD` (par défaut) : le carrousel arrive dans ta boîte de réception TikTok. Tu ajoutes une musique et tu publies depuis l'app.
-- `DIRECT_POST` : publication directe, mais **privée tant que l'app TikTok n'a pas passé l'audit**.
-
-### Reddit
-Crée une app de type *script* sur https://www.reddit.com/prefs/apps.
+En mode `auto`, le carrousel arrive dans ta boîte de réception TikTok : les publications directes restent privées tant que ton app n'a pas passé l'audit. Tu peux forcer `DIRECT_POST` dans `publish.tiktok.mode`.
 
 ## Développement
 
@@ -200,7 +203,7 @@ Les tests couvrent :
 - la normalisation et la vérification des chiffres ;
 - le rendu et la détection de débordement ;
 - la publication idempotente ;
-- les appels HTTP exacts envoyés à Threads et TikTok (tests de contrat d'après leur documentation) ;
+- les appels HTTP exacts envoyés à Upload-Post, Threads et TikTok (tests de contrat d'après leur documentation) ;
 - la connexion OAuth et la résolution automatique des modèles ;
 - la logique du bot Discord ;
 - un **test de bout en bout** : un faux serveur compatible OpenAI, interrogé en vrai HTTP, de la collecte jusqu'aux slides.
@@ -216,7 +219,7 @@ src/veille/
   llm.py            client compatible OpenAI multi-fournisseurs, bascule, profils, JSON validé et réparé
   harness/          harnais de cohérence : style · facts · normalize · prompts · exemplars/ · evaluate
   carousel/         template HTML + rendu Playwright, mesure de débordement et ajustement automatique
-  publishers/       threads · tiktok
+  publishers/       uploadpost · threads · tiktok
   pipeline.py       orchestration, créneaux, publication idempotente
   bot.py            bot Discord, commandes slash, ordonnanceur
   web.py            serveur de médias + callback OAuth TikTok

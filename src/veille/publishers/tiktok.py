@@ -108,19 +108,24 @@ class TikTokPublisher:
         log.warning("privacy %s not allowed for this account (%s), using SELF_ONLY", self.cfg.privacy_level, options)
         return "SELF_ONLY"
 
+    @property
+    def mode(self) -> str:
+        # Without the TikTok audit, direct posts are private: "auto" sends a draft to the inbox instead.
+        return "MEDIA_UPLOAD" if self.cfg.mode == "auto" else self.cfg.mode
+
     async def publish(self, title: str, description: str, image_urls: list[str]) -> dict:
         post_info: dict = {"title": title[:90], "description": description}
-        if self.cfg.mode == "DIRECT_POST":
+        if self.mode == "DIRECT_POST":
             post_info |= {"privacy_level": await self._privacy_level(), "disable_comment": False, "auto_add_music": True}
         data = await self._post("post/publish/content/init/", {
             "media_type": "PHOTO",
-            "post_mode": self.cfg.mode,
+            "post_mode": self.mode,
             "post_info": post_info,
             "source_info": {"source": "PULL_FROM_URL", "photo_cover_index": 0, "photo_images": image_urls[:35]},
         })
         publish_id = data["publish_id"]
         status = await self._wait(publish_id)
-        return {"publish_id": publish_id, "status": status, "mode": self.cfg.mode}
+        return {"publish_id": publish_id, "status": status, "mode": self.mode}
 
     async def _wait(self, publish_id: str, timeout: float = 180) -> str:
         deadline = time.monotonic() + timeout

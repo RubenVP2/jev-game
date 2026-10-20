@@ -210,3 +210,113 @@ async def test_handle_comes_from_the_threads_account(settings, db):
     settings.app.brand.handle = "@custom"
     assert pipeline.handle() == "@custom"
     await pipeline.aclose()
+
+
+# --- Upload-Post ---------------------------------------------------------------
+
+UPLOADPOST = "https://api.upload-post.com/api"
+PROFILES = {"success": True, "profiles": [{"username": "signal", "social_accounts": {
+    "threads": {"handle": "signal_dev", "username": "123"}, "tiktok": {"handle": "signal.dev"}, "x": ""}}]}
+
+
+def multipart_fields(request) -> dict[str, list[str]]:
+    """Text fields of a multipart body, by name (files excluded)."""
+    import re
+
+    fields: dict[str, list[str]] = {}
+    body = request.content.decode("latin-1")
+    for part in body.split("--" + request.headers["content-type"].split("boundary=")[1]):
+        m = re.search(r'name="([^"]+)"(?!; filename)\r\n\r\n(.*)\r\n$', part, re.S)
+        if m:
+            fields.setdefault(m.group(1), []).append(m.group(2))
+    return fields
+
+
+@respx.mock
+async def test_uploadpost_publishes_threads_and_tiktok_in_one_call(settings, db, client, sample_content, tmp_path):
+    from veille.publishers.uploadpost import UploadPostPublisher
+
+    settings.secrets.uploadpost_api_key = "key"
+    respx.get(f"{UPLOADPOST}/uploadposts/users").mock(return_value=httpx.Response(200, json=PROFILES))
+    upload = respx.post(f"{UPLOADPOST}/upload_photos").mock(return_value=httpx.Response(200, json={
+        "success": True,
+        "results": {"threads": {"success": True, "url": "https://threads.net/@signal_dev/post/1", "post_id": "1"},
+                    "tiktok": {"success": True, "publish_id": "p1"}},
+    }))
+    images = []
+    for n in (1, 2):
+        path = tmp_path / f"slide-0{n}.jpg"
+        path.write_bytes(b"jpeg")
+        images.append(path)
+
+    publisher = UploadPostPublisher(settings, db, client)
+    result = await publisher.publish(sample_content, images, ["threads", "tiktok"])
+
+    assert result["threads"]["url"].endswith("/post/1")
+    assert result["tiktok"] == {"publish_id": "p1", "via": "upload-post", "mode": "DIRECT_POST"}
+    request = upload.calls[0].request
+    assert request.headers["Authorization"] == "Apikey key"
+    fields = multipart_fields(request)
+    assert fields["user"] == ["signal"]
+    assert fields["platform[]"] == ["threads", "tiktok"]
+    assert fields["threads_title"][0].replace("\r\n", "\n") == sample_content.threads.post
+    assert fields["threads_first_comment"][0].startswith(sample_content.threads.reply.splitlines()[0])
+    assert fields["post_mode"] == ["DIRECT_POST"] and fields["privacy_level"] == ["PUBLIC_TO_EVERYONE"]
+    assert request.content.count(b'name="photos[]"') == 2
+    assert publisher.threads_handle() == "@signal_dev"
+
+
+@respx.mock
+async def test_uploadpost_async_status_and_partial_failure(settings, db, client, sample_content, tmp_path):
+    from veille.publishers.uploadpost import UploadPostPublisher
+
+    settings.secrets.uploadpost_api_key = "key"
+    respx.get(f"{UPLOADPOST}/uploadposts/users").mock(return_value=httpx.Response(200, json=PROFILES))
+    respx.post(f"{UPLOADPOST}/upload_photos").mock(return_value=httpx.Response(200, json={"success": True, "request_id": "r1"}))
+    statuses = iter([{"status": "in_progress"}, {"status": "completed", "results": [
+        {"platform": "threads", "success": True, "message": "ok"},
+        {"platform": "tiktok", "success": False, "message": "account needs reauth"},
+    ]}])
+    respx.get(f"{UPLOADPOST}/uploadposts/status").mock(side_effect=lambda r: httpx.Response(200, json=next(statuses)))
+    image = tmp_path / "slide-01.jpg"
+    image.write_bytes(b"jpeg")
+
+    result = await UploadPostPublisher(settings, db, client).publish(sample_content, [image], ["threads", "tiktok"])
+    assert result["threads"]["via"] == "upload-post"
+    assert result["tiktok"] == {"error": "account needs reauth"}
+
+
+async def test_pipeline_uses_uploadpost_when_its_key_is_set(settings, db, sample_content):
+    from datetime import UTC, datetime
+
+    from test_pipeline import make_draft
+    from veille.models import DraftStatus
+    from veille.pipeline import Pipeline
+
+    pipeline = Pipeline(settings, db)
+    assert pipeline.backend == "direct"
+    settings.secrets.uploadpost_api_key = "key"
+    settings.secrets.public_base_url = ""  # not needed with Upload-Post
+    assert pipeline.backend == "uploadpost"
+
+    calls = []
+
+    async def publish(content, images, platforms):
+        calls.append(platforms)
+        return {"threads": {"url": "u", "via": "upload-post"}, "tiktok": {"error": "quota"}}
+
+    pipeline.uploadpost.publish = publish
+    draft_id = make_draft(pipeline, sample_content, datetime.now(UTC))
+    outcome = await pipeline.publish(draft_id)
+    assert outcome["errors"] == ["TikTok: quota"]
+    assert db.get_draft(draft_id)["status"] == DraftStatus.FAILED
+
+    async def retry(content, images, platforms):
+        calls.append(platforms)
+        return {"tiktok": {"publish_id": "p", "via": "upload-post"}}
+
+    pipeline.uploadpost.publish = retry
+    await pipeline.publish(draft_id, expected=DraftStatus.FAILED)
+    assert calls == [["threads", "tiktok"], ["tiktok"]]  # Threads is not posted twice
+    assert db.get_draft(draft_id)["status"] == DraftStatus.PUBLISHED
+    await pipeline.aclose()

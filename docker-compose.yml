@@ -11,9 +11,11 @@ services:
     expose:
       - "8080"
 
-  # HTTPS reverse proxy: Threads and TikTok download the slides from PUBLIC_BASE_URL.
+  # Only for the "direct" backend (own Meta/TikTok apps): Threads and TikTok download the slides from
+  # https://DOMAIN. Not needed with Upload-Post. Start it with: docker compose --profile direct up -d
   caddy:
     image: caddy:2.8
+    profiles: [direct]
     restart: unless-stopped
     env_file: .env
     ports:

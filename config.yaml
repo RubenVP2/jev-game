@@ -99,13 +99,16 @@ carousel:
   max_slides: 8
 
 publish:
+  # auto: Upload-Post when UPLOADPOST_API_KEY is set (one key, no domain, no developer apps),
+  # otherwise the platforms' own APIs with your Meta/TikTok apps ("direct").
+  backend: auto
   threads:
     enabled: true
     # Post the rendered slides as a carousel attached to the main post.
     attach_carousel: true
   tiktok:
     enabled: true
-    # MEDIA_UPLOAD: lands in your TikTok inbox as a draft (add music, publish from the app).
-    # DIRECT_POST: publishes directly. Public only once your TikTok app passed the audit.
-    mode: MEDIA_UPLOAD
+    # auto: public direct post through Upload-Post; inbox draft through your own TikTok app (direct posts
+    # stay private until that app passes TikTok's audit). Or force DIRECT_POST / MEDIA_UPLOAD.
+    mode: auto
     privacy_level: PUBLIC_TO_EVERYONE

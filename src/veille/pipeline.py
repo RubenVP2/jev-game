@@ -20,6 +20,7 @@ from .llm import LLM, LLMError
 from .models import DraftStatus, Item, PostContent, ThreadsCopy
 from .publishers.threads import ThreadsPublisher
 from .publishers.tiktok import TikTokPublisher
+from .publishers.uploadpost import UploadPostPublisher
 from .ranking import Candidate, rank
 from .sources import Sources
 
@@ -66,6 +67,14 @@ class Pipeline:
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
         self.threads = ThreadsPublisher(settings, self.db, self.http)
         self.tiktok = TikTokPublisher(settings, self.db, self.http)
+        self.uploadpost = UploadPostPublisher(settings, self.db, self.http)
+
+    @property
+    def backend(self) -> str:
+        backend = self.settings.app.publish.backend
+        if backend == "auto":
+            return "uploadpost" if self.uploadpost.configured else "direct"
+        return backend
 
     async def aclose(self) -> None:
         await self.sources.aclose()
@@ -110,6 +119,8 @@ class Pipeline:
         configured = self.settings.app.brand.handle
         if configured:
             return configured
+        if self.backend == "uploadpost":
+            return self.uploadpost.threads_handle()
         return f"@{self.threads.username}" if self.threads.username else ""
 
     # --- slots ---------------------------------------------------------------
@@ -130,11 +141,13 @@ class Pipeline:
             lines.append(f"`{slot.strftime('%a %d %b %H:%M')}` {state}")
         providers = [p for p in self.settings.app.llm.providers if self.settings.api_key(p)]
         lines.append("LLM providers: " + (", ".join(providers) or "**none, add an API key**"))
-        tiktok_mode = self.settings.app.publish.tiktok.mode
-        lines.append(
-            f"Threads: {'connected' if self.threads.configured else 'not configured'} · "
-            f"TikTok: {'connected' if self.tiktok.configured else 'not connected'} ({tiktok_mode})"
-        )
+        if self.backend == "uploadpost":
+            lines.append(f"Publishing through Upload-Post (TikTok {self.uploadpost.tiktok_mode()})")
+        else:
+            lines.append(
+                f"Threads: {'connected' if self.threads.configured else 'not configured'} · "
+                f"TikTok: {'connected' if self.tiktok.configured else 'not connected'} ({self.tiktok.mode})"
+            )
         stats = self.db.stats()
         if stats:
             lines.append("Drafts: " + ", ".join(f"{k} {v}" for k, v in sorted(stats.items())))
@@ -293,34 +306,47 @@ class Pipeline:
         errors: list[str] = []
         skipped: list[str] = []
         cfg = self.settings.app.publish
-        platforms = []
-        for name, enabled, publisher in (
-            ("threads", cfg.threads.enabled, self.threads),
-            ("tiktok", cfg.tiktok.enabled, self.tiktok),
-        ):
-            if not enabled or name in results:
-                continue
-            if not publisher.configured:
-                skipped.append(name)  # e.g. TikTok not connected yet: publish elsewhere, do not fail
-                continue
-            platforms.append(name)
+        wanted = [name for name, enabled in (("threads", cfg.threads.enabled), ("tiktok", cfg.tiktok.enabled))
+                  if enabled and name not in results]
+        names = {"threads": "Threads", "tiktok": "TikTok"}
 
-        if platforms and not self.settings.secrets.public_base_url:
-            errors.append("PUBLIC_BASE_URL is not set: Threads and TikTok cannot fetch the slides")
-            platforms = []
-        urls = self.media_urls(draft)
-        for name in platforms:
+        if self.backend == "uploadpost" and wanted:
+            images = self.media_paths(draft) if (cfg.threads.attach_carousel or "tiktok" in wanted) else []
             try:
-                if name == "threads":
-                    images = urls if cfg.threads.attach_carousel else []
-                    results["threads"] = await self.threads.publish(content.threads.post, content.threads.reply, images)
-                else:
-                    results["tiktok"] = await self.tiktok.publish(content.tiktok.title, content.tiktok.description, urls)
+                outcome = await self.uploadpost.publish(content, images, wanted)
             except Exception as exc:  # noqa: BLE001 - reported on Discord, retry possible
-                log.exception("%s publish failed for draft %s", name, draft_id)
-                errors.append(f"{'Threads' if name == 'threads' else 'TikTok'}: {exc}")
+                log.exception("upload-post publish failed for draft %s", draft_id)
+                errors.append(f"Upload-Post: {exc}")
+                outcome = {}
+            for name, result in outcome.items():
+                if "error" in result:
+                    errors.append(f"{names[name]}: {result['error']}")
+                else:
+                    results[name] = result
+        elif wanted:
+            platforms = []
+            for name in wanted:
+                publisher = self.threads if name == "threads" else self.tiktok
+                if publisher.configured:
+                    platforms.append(name)
+                else:
+                    skipped.append(name)  # e.g. TikTok not connected yet: publish elsewhere, do not fail
+            if platforms and not self.settings.secrets.public_base_url:
+                errors.append("DOMAIN is not set: Threads and TikTok cannot fetch the slides (or set UPLOADPOST_API_KEY)")
+                platforms = []
+            urls = self.media_urls(draft)
+            for name in platforms:
+                try:
+                    if name == "threads":
+                        images = urls if cfg.threads.attach_carousel else []
+                        results["threads"] = await self.threads.publish(content.threads.post, content.threads.reply, images)
+                    else:
+                        results["tiktok"] = await self.tiktok.publish(content.tiktok.title, content.tiktok.description, urls)
+                except Exception as exc:  # noqa: BLE001 - reported on Discord, retry possible
+                    log.exception("%s publish failed for draft %s", name, draft_id)
+                    errors.append(f"{names[name]}: {exc}")
         if not results and not errors:
-            errors.append("no platform is configured: set THREADS_ACCESS_TOKEN and/or connect TikTok")
+            errors.append("no platform is configured: set UPLOADPOST_API_KEY, or connect Threads/TikTok with /connect")
 
         status = DraftStatus.FAILED if errors else DraftStatus.PUBLISHED
         self.db.update_draft(draft_id, status=status, results=results, error="\n".join(errors) or None)

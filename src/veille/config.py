@@ -36,6 +36,9 @@ class Secrets(BaseSettings):
     threads_app_secret: str = ""
     threads_redirect_uri: str = ""
 
+    uploadpost_api_key: str = ""
+    uploadpost_user: str = ""
+
     tiktok_client_key: str = ""
     tiktok_client_secret: str = ""
     tiktok_redirect_uri: str = ""
@@ -159,11 +162,14 @@ class ThreadsPublishConfig(BaseModel):
 
 class TikTokPublishConfig(BaseModel):
     enabled: bool = True
-    mode: str = "MEDIA_UPLOAD"
+    # auto: public direct post through Upload-Post, inbox draft through your own (unaudited) TikTok app.
+    mode: str = "auto"
     privacy_level: str = "PUBLIC_TO_EVERYONE"
 
 
 class PublishConfig(BaseModel):
+    # auto: Upload-Post when UPLOADPOST_API_KEY is set, otherwise the platforms' own APIs ("direct").
+    backend: str = "auto"
     threads: ThreadsPublishConfig = ThreadsPublishConfig()
     tiktok: TikTokPublishConfig = TikTokPublishConfig()
 

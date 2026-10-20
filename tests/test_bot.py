@@ -129,3 +129,32 @@ async def test_failed_generation_schedules_a_retry(bot, monkeypatch):
     await bot.prepare_next_slot(datetime.now(UTC) + timedelta(hours=2))
     assert "Retrying" in bot.notified[-1]
     assert added and added[0]["args"][1] == ""
+
+
+async def test_defaults_use_veille_drafts_and_the_server_owner(settings, db, monkeypatch):
+    settings.secrets.discord_allowed_user_ids = ""
+    settings.secrets.discord_channel_id = ""
+    bot = VeilleBot(Pipeline(settings, db))
+    created = []
+
+    async def create_text_channel(name, topic=""):
+        created.append(name)
+        return SimpleNamespace(id=555, name=name)
+
+    guild = SimpleNamespace(name="srv", owner_id=99, text_channels=[], create_text_channel=create_text_channel)
+    monkeypatch.setattr(VeilleBot, "guilds", property(lambda self: [guild]))
+    await bot.resolve_defaults()
+    assert created == ["veille-drafts"] and bot.channel_id == 555 and bot.reviewers == {99}
+
+    existing = SimpleNamespace(id=777, name="veille-drafts")
+    guild.text_channels = [existing]
+    bot.channel_id, bot.reviewers = 0, set()
+    await bot.resolve_defaults()
+    assert bot.channel_id == 777 and created == ["veille-drafts"]  # reused, not created twice
+
+
+def test_invite_url_has_the_needed_permissions():
+    from veille.bot import invite_url
+
+    url = invite_url(123)
+    assert "client_id=123" in url and "applications.commands" in url and "permissions=117776" in url

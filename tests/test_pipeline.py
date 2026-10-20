@@ -93,7 +93,7 @@ async def test_missing_public_url_blocks_publication(pipeline, sample_content):
     pipeline.settings.secrets.public_base_url = ""
     draft_id = make_draft(pipeline, sample_content, datetime.now(UTC))
     outcome = await pipeline.publish(draft_id)
-    assert "PUBLIC_BASE_URL" in outcome["errors"][0]
+    assert "DOMAIN is not set" in outcome["errors"][0]
     assert pipeline.threads.calls == []
 
 

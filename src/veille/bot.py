@@ -31,6 +31,16 @@ ACTIONS = {
 }
 
 RETRY_DELAY = timedelta(minutes=20)
+DEFAULT_CHANNEL = "veille-drafts"
+# View channels, send messages, embed links, attach files, read history, manage channels (#veille-drafts).
+INVITE_PERMISSIONS = 1024 | 2048 | 16384 | 32768 | 65536 | 16
+
+
+def invite_url(application_id: int | str) -> str:
+    return (
+        f"https://discord.com/oauth2/authorize?client_id={application_id}"
+        f"&scope=bot%20applications.commands&permissions={INVITE_PERMISSIONS}"
+    )
 
 STATUS_ACTIONS = {
     DraftStatus.PENDING: ["approve", "now", "edit", "regen", "another", "reject"],
@@ -117,6 +127,9 @@ class VeilleBot(discord.Client):
         self._web_runner = None
         self._tasks: set[asyncio.Task] = set()
         self._synced = False
+        # Resolved at startup when not configured: #veille-drafts and the server owner.
+        self.channel_id = pipeline.settings.secrets.channel_id
+        self.reviewers = set(pipeline.settings.secrets.allowed_user_ids)
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
 
@@ -161,7 +174,7 @@ class VeilleBot(discord.Client):
             await interaction.response.send_message("\n".join(self.pipeline.status_lines())[:2000], ephemeral=True)
 
     async def _authorized(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id in self.settings.secrets.allowed_user_ids:
+        if interaction.user.id in self.reviewers:
             return True
         await interaction.response.send_message("You are not allowed to review drafts (DISCORD_ALLOWED_USER_IDS).", ephemeral=True)
         return False
@@ -185,11 +198,21 @@ class VeilleBot(discord.Client):
         log.info("discord bot ready as %s", self.user)
         if not self._synced:  # on_ready also fires on reconnects
             self._synced = True
+            try:
+                await self.resolve_defaults()
+            except (RuntimeError, discord.HTTPException) as exc:
+                log.error("discord setup incomplete: %s", exc)
+                return
             channel = await self.channel()
             guild = getattr(channel, "guild", None)
             if guild is not None:
                 self.tree.copy_global_to(guild=guild)
                 await self.tree.sync(guild=guild)  # guild commands are available immediately
+            if self.pipeline.backend == "uploadpost":
+                try:
+                    await self.pipeline.uploadpost.profile(refresh=True)  # connected accounts and Threads handle
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("upload-post profile unavailable: %s", exc)
             await self.notify(f"**{self.settings.app.brand.name}** online.\n" + "\n".join(self.pipeline.status_lines()))
         # Catch up after a restart: the draft for an imminent slot may not exist yet.
         slot = self.pipeline.next_slot()
@@ -205,8 +228,24 @@ class VeilleBot(discord.Client):
         await super().close()
 
     async def channel(self) -> discord.abc.Messageable:
-        channel_id = self.settings.secrets.channel_id
-        return self.get_channel(channel_id) or await self.fetch_channel(channel_id)
+        return self.get_channel(self.channel_id) or await self.fetch_channel(self.channel_id)
+
+    async def resolve_defaults(self) -> None:
+        """Only the bot token is required: default to #veille-drafts and the server owner as reviewer."""
+        if self.channel_id and self.reviewers:
+            return
+        if not self.guilds:
+            raise RuntimeError(f"the bot is not in any Discord server yet, invite it: {invite_url(self.application_id)}")
+        guild = self.guilds[0]
+        if not self.channel_id:
+            channel = discord.utils.get(guild.text_channels, name=DEFAULT_CHANNEL)
+            if channel is None:
+                channel = await guild.create_text_channel(DEFAULT_CHANNEL, topic="Drafts to review before publication")
+            self.channel_id = channel.id
+            log.info("using #%s (%s) in %s", channel.name, channel.id, guild.name)
+        if not self.reviewers:
+            self.reviewers = {guild.owner_id}
+            log.info("reviewer: server owner %s", guild.owner_id)
 
     async def notify(self, text: str) -> None:
         await (await self.channel()).send(text[:2000])
@@ -262,10 +301,11 @@ class VeilleBot(discord.Client):
         lines = [f"**Draft #{draft_id}**: " + ("published" if not outcome["errors"] else "publication failed")]
         threads = outcome["results"].get("threads")
         if threads:
-            lines.append(f"Threads: {threads.get('permalink') or threads.get('post_id')}")
+            lines.append(f"Threads: {threads.get('permalink') or threads.get('url') or threads.get('post_id')}")
         tiktok = outcome["results"].get("tiktok")
         if tiktok:
-            where = "sent to your TikTok inbox, finish it in the app" if tiktok.get("mode") == "MEDIA_UPLOAD" else tiktok.get("status")
+            where = ("sent to your TikTok inbox, finish it in the app" if tiktok.get("mode") == "MEDIA_UPLOAD"
+                     else tiktok.get("url") or tiktok.get("status") or "published")
             lines.append(f"TikTok: {where}")
         lines += [f"Skipped (not configured): {name}" for name in outcome.get("skipped", [])]
         lines += [f"Error: {e}" for e in outcome["errors"]]
@@ -382,8 +422,6 @@ class VeilleBot(discord.Client):
 
 def run(pipeline: Pipeline) -> None:
     token = pipeline.settings.secrets.discord_bot_token
-    if not token or not pipeline.settings.secrets.channel_id:
-        raise SystemExit("DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID are required")
-    if not pipeline.settings.secrets.allowed_user_ids:
-        raise SystemExit("DISCORD_ALLOWED_USER_IDS is required: only these users can approve drafts")
+    if not token:
+        raise SystemExit("DISCORD_BOT_TOKEN is required")
     VeilleBot(pipeline).run(token, log_handler=None)
