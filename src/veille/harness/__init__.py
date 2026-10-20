@@ -28,7 +28,7 @@ from ..models import Item, PostContent
 from . import prompts
 from .facts import FactSheet, clean_fact_sheet, ungrounded_figures
 from .normalize import normalize
-from .style import lint
+from .style import is_soft, lint
 
 log = logging.getLogger(__name__)
 
@@ -140,6 +140,7 @@ class Harness:
             max_tokens=12000,
             repairs=3,
             check=lambda c: self.problems(c, item, dossier),
+            accept=lambda problems: all(is_soft(p) for p in problems),
         )
         return self._finish(content, item), self.llm.last_model
 
@@ -182,6 +183,7 @@ class Harness:
         report = Report(writer=writer)
         judged = await self.judge(content, facts, exemplars, recent_hooks)
         if judged is None:
+            report.open_issues = self.problems(content, item, dossier)
             return Composition(content, facts, report)
 
         verdict, report.judge = judged
@@ -208,6 +210,7 @@ class Harness:
         report.scores = best_verdict.scores.model_dump()
         report.summary = best_verdict.summary
         report.open_issues = best_verdict.issues if best_verdict.score < self.cfg.min_score else []
+        report.open_issues += self.problems(best, item, dossier)
         return Composition(best, facts, report)
 
     async def fit_slides(self, composition: Composition, item: Item, dossier: str, overflows: list[str], recent_hooks: list[str]) -> PostContent:

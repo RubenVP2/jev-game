@@ -133,12 +133,16 @@ class LLM:
         max_tokens: int = 4000,
         repairs: int = 2,
         check: Callable[[T], list[str]] | None = None,
+        accept: Callable[[list[str]], bool] | None = None,
     ) -> T:
-        """Ask for JSON, validate it against `schema` (and `check`), and send the errors back to the same model."""
+        """Ask for JSON, validate it against `schema` (and `check`), and send the errors back to the same model.
+
+        `accept` decides, after the last repair, whether the remaining `check` problems are tolerable.
+        """
         errors = []
         for choice in self.chain(task):
             try:
-                result = await self._json_with(choice, task, system, user, schema, temperature, max_tokens, repairs, check)
+                result = await self._json_with(choice, task, system, user, schema, temperature, max_tokens, repairs, check, accept)
                 self.last_model = f"{choice.provider}/{choice.model}"
                 return result
             except Exception as exc:  # noqa: BLE001 - API error or still invalid: next model starts from scratch
@@ -157,6 +161,7 @@ class LLM:
         max_tokens: int,
         repairs: int,
         check: Callable[[T], list[str]] | None,
+        accept: Callable[[list[str]], bool] | None = None,
     ) -> T:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         last_error = ""
@@ -165,6 +170,9 @@ class LLM:
             try:
                 result = schema.model_validate(extract_json(completion.text))
                 problems = check(result) if check else []
+                if problems and attempt == repairs and accept is not None and accept(problems):
+                    log.info("%s: %s accepted with minor issues: %s", task, completion.label, problems)
+                    return result
                 if problems:
                     raise ValueError("\n".join(f"- {p}" for p in problems))
                 log.info("%s answered by %s (attempt %d)", task, completion.label, attempt + 1)

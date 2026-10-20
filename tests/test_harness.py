@@ -211,3 +211,22 @@ def test_verdict_score_is_weighted():
     data = json.loads(verdict(10, []))
     data["scores"]["grounding"] = 0
     assert Verdict.model_validate(data).score == 8.0
+
+
+async def test_minor_style_issues_do_not_sink_a_draft(settings):
+    long_sentence = "Ledgerline keeps " + "every single key and offset " * 6 + "in memory."
+    wordy = GOOD_POST.replace("The cost:", long_sentence + "\nThe cost:")
+    harness, _ = harness_with(settings, [json.dumps(FACTS)] + [json.dumps(post(wordy))] * 4 + [verdict(9, [])])
+    comp = await harness.compose(ITEM, DOSSIER, approved=[], recent_hooks=[])
+    assert long_sentence in comp.content.threads.post
+    assert any(issue.startswith("[style]") for issue in comp.report.open_issues)
+
+
+async def test_hard_problems_still_fail_the_model(settings):
+    from veille.llm import LLMError
+
+    banned = GOOD_POST.replace("The cost:", "A game-changer. The cost:")
+    harness, _ = harness_with(settings, [json.dumps(FACTS)] + [json.dumps(post(banned))] * 4)
+    harness.llm._clients["second"] = FakeClient([json.dumps(post(banned))] * 4)
+    with pytest.raises(LLMError):
+        await harness.compose(ITEM, DOSSIER, approved=[], recent_hooks=[])

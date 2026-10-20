@@ -56,6 +56,14 @@ ITEM_COUNTS = {
 THREADS_TARGET = 450  # the hard limit is 500; keep margin for manual edits
 MAX_SENTENCE_WORDS = 32
 
+# Style problems are sent back for a fix like the others, but cannot sink a draft: if they remain
+# after the last repair, the draft is kept and they are listed on Discord as open issues.
+SOFT = "[style] "
+
+
+def is_soft(problem: str) -> bool:
+    return problem.startswith(SOFT)
+
 SLIDE_SPECS = [
     '{"kind": "cover", "kicker": "<= 28 chars: SOURCE / TOPIC, e.g. \'GITHUB / RUST\'", "heading": "<= 60 chars, the claim", "body": "<= 110 chars, what it is in one line"}',
     '{"kind": "points", "heading": "<= 40 chars", "bullets": ["2-4 bullets, each <= 90 chars"]}',
@@ -162,10 +170,10 @@ def lint(content: PostContent, min_slides: int, max_slides: int) -> list[str]:
         if "!" in text:
             problems.append(f"{where}: remove exclamation marks")
         if _FIRST_PERSON.search(text):
-            problems.append(f"{where}: no first person ({_FIRST_PERSON.search(text).group(0)!r})")
+            problems.append(f"{SOFT}{where}: no first person ({_FIRST_PERSON.search(text).group(0)!r})")
         for sentence in _SENTENCE.findall(text):
             if len(sentence.split()) > MAX_SENTENCE_WORDS and not where.startswith("tiktok"):
-                problems.append(f"{where}: split the sentence starting \"{sentence.strip()[:40]}...\" (max {MAX_SENTENCE_WORDS} words)")
+                problems.append(f"{SOFT}{where}: split the sentence starting \"{sentence.strip()[:40]}...\" (max {MAX_SENTENCE_WORDS} words)")
 
     post = content.threads.post
     first_line = post.strip().splitlines()[0] if post.strip() else ""
@@ -176,8 +184,8 @@ def lint(content: PostContent, min_slides: int, max_slides: int) -> list[str]:
     if "http" in post:
         problems.append("threads.post: no link in the main post, links go in the reply")
     if len(post) > THREADS_TARGET:
-        problems.append(f"threads.post is {len(post)} chars, keep it under {THREADS_TARGET}")
+        problems.append(f"{SOFT}threads.post is {len(post)} chars, keep it under {THREADS_TARGET}")
     hedges = [h.strip() for h in HEDGES if h in f" {post.lower()} "]
     if len(hedges) > 1:
-        problems.append(f"threads.post: cut filler words {hedges}")
+        problems.append(f"{SOFT}threads.post: cut filler words {hedges}")
     return problems
