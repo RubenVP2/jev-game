@@ -3,167 +3,207 @@
 Pipeline automatique de veille technologique :
 
 - **Collecte** sur GitHub Trending, Hacker News et Reddit.
-- **Rédaction** d'un brief technique en anglais par LLM (Google AI Studio, OpenRouter ou OrcaRouter).
+- **Rédaction** d'un brief technique en anglais par LLM (Google AI Studio, OpenRouter ou OrcaRouter), à travers un **harnais de cohérence**.
 - **Rendu** en carrousel d'images.
 - **Validation** sur Discord.
 - **Publication** sur Threads et TikTok à **8h** et **19h** (heure de Paris).
 
 ```
-GitHub Trending ─┐                 fusion des doublons     dossier : README / article
-Hacker News     ─┼─► SQLite ─────► score + tri LLM    ───► + meilleurs commentaires ──► rédaction LLM
-Reddit          ─┘                 (anti-répétition)                                   (contrôles éditoriaux)
-                                                                                            │
-           Threads (carrousel + réponse avec source) ◄── créneau 8h / 19h ◄── Discord ◄── slides JPEG
-           TikTok (carrousel photo)                                         [Approve] [Publish now] [Edit]
-                                                                            [Regenerate] [Another topic] [Reject]
+GitHub Trending ─┐                fusion des doublons      dossier : README / article
+Hacker News     ─┼─► SQLite ────► score + tri LLM    ────► + meilleurs commentaires
+Reddit          ─┘                (anti-répétition)                 │
+                                                                    ▼
+                           ┌──────────── HARNAIS DE COHÉRENCE ─────────────┐
+                           │ fiche de faits ─► rédaction ─► normalisation  │
+                           │   ─► contrôles + vérification des chiffres    │
+                           │   ─► juge (grille fixe) ─► révision           │
+                           │   ─► rendu ─► contrôle de débordement         │
+                           └───────────────────────────────────────────────┘
+                                                                    │
+     Threads (carrousel + réponse avec source) ◄── 8h / 19h ◄── Discord : Approve · Publish now · Edit
+     TikTok (carrousel photo)                                            Regenerate · Another topic · Reject
 ```
 
-Le cadrage complet est dans [`docs/CADRAGE.md`](docs/CADRAGE.md).
+## Démarrage : il ne reste que les clés à fournir
+
+```bash
+git clone <repo> veille && cd veille
+cp .env.example .env          # 1. remplis les clés (section REQUIRED au minimum)
+docker compose up -d --build  # 2. lance le service
+docker compose exec app veille doctor   # 3. vérifie tout : clés, modèles, Discord, Threads, TikTok, HTTPS, rendu
+```
+
+`veille doctor` teste chaque clé et **chaque modèle configuré** (un court appel réel), l'accès au salon Discord, le token Threads, la connexion TikTok, l'URL publique et le rendu des slides. Il dit précisément quoi corriger.
+
+Au démarrage, le bot poste son état dans le salon Discord : prochains créneaux, fournisseurs LLM actifs, plateformes connectées.
+
+### Contenu du `.env`
+
+| Variable | Obligatoire | Rôle |
+|---|---|---|
+| `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` / `ORCAROUTER_API_KEY` | au moins une | LLM. Avec plusieurs clés, la bascule entre fournisseurs est automatique |
+| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_ALLOWED_USER_IDS` | oui | Validation des brouillons |
+| `DOMAIN` | oui | Domaine qui pointe vers le serveur. Les slides y sont servies en HTTPS |
+| `THREADS_ACCESS_TOKEN` | pour Threads | Token longue durée, rafraîchi automatiquement |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | pour TikTok | Puis `docker compose exec app veille tiktok-auth` une fois |
+| `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | conseillé | Sans elles, Reddit bloque souvent les serveurs |
+| `GITHUB_TOKEN` | optionnel | Relève la limite d'appels à l'API GitHub pour lire les README |
+
+**Une plateforme sans identifiants est ignorée**, pas en erreur : tu peux démarrer avec Threads seul et ajouter TikTok plus tard.
+
+## Le harnais de cohérence
+
+Deux modèles différents ne raisonnent pas et n'écrivent pas pareil. Pour que les posts gardent la même voix quel que soit le modèle qui écrit (bascule de fournisseur, changement de modèle), la rédaction passe par un harnais, dans `src/veille/harness/` :
+
+| Étape | Ce qu'elle garantit |
+|---|---|
+| **Fiche de faits** (tâche `facts`) | Le dossier brut (README, article, commentaires) est d'abord converti en faits structurés : mécanisme, chiffres avec **citation exacte**, compromis, critiques attribuées. Une étape automatique supprime chaque chiffre dont la citation n'existe pas dans le dossier. Tous les rédacteurs travaillent à partir de cette fiche commune. |
+| **Charte unique** (`style.py`) | Les mêmes règles de voix, d'accroche, de structure et la même liste de formules bannies, formulées à l'identique pour le rédacteur et pour le juge. |
+| **Exemples de référence** | Tes posts **validés sur Discord** servent de modèles de ton, complétés par les exemples fournis (`harness/exemplars/`). La voix converge vers ce que tu approuves. |
+| **Accroches récentes** | Les premières lignes des derniers posts sont passées au rédacteur pour éviter de répéter la même formule. |
+| **Un modèle par version** | Un même modèle écrit et corrige sa version jusqu'au bout. Si un modèle échoue, le suivant repart de zéro : un post n'est jamais un patchwork de deux modèles. |
+| **Normalisation** | Guillemets, tirets, puces, ponctuation des titres, hashtags TikTok, lien source dans la réponse Threads : traités par du code, à l'identique pour tous les modèles. |
+| **Contrôles automatiques** | Limites de caractères, nombre d'éléments par slide, mots bannis, emoji, « ! », première personne, questions rhétoriques, phrases trop longues, lien ou hashtag dans le post principal. Chaque problème est renvoyé au modèle pour correction. |
+| **Vérification des chiffres** | Tout chiffre du post absent du dossier est refusé (« 4.1k » est accepté si la source dit 4,100). |
+| **Juge** (tâche `judge`) | Un modèle d'une autre famille note le brouillon sur 7 critères fixes. Sous `min_score` (7.5/10), le brouillon est révisé avec les remarques du juge, et la meilleure version est conservée. |
+| **Contrôle de débordement** | Après le rendu, le texte qui déborde d'une slide est mesuré dans le navigateur. Le rédacteur raccourcit les slides concernées ; en dernier recours, la taille du texte est réduite légèrement. |
+| **Profils par modèle** (`llm.profiles`) | Réglages par modèle : mode JSON, température, consignes correctrices pour les habitudes connues d'un modèle. |
+
+Chaque brouillon affiche sur Discord **le modèle qui l'a écrit, la note du juge, le nombre de révisions et les remarques restantes**.
+
+### Comparer les modèles : `veille eval`
+
+```bash
+docker compose exec app veille eval                       # modèles de la chaîne "write"
+docker compose exec app veille eval --models openrouter/anthropic/claude-sonnet-5.5,google/gemini-pro-latest
+```
+
+Le même dossier (un exemple fourni, ou `--dossier fichier.txt`) passe par le harnais avec chaque modèle, à partir de la même fiche de faits. Le tableau affiche, pour chaque modèle :
+
+- la note du juge ;
+- le nombre de révisions ;
+- les problèmes restants ;
+- le temps de génération ;
+- la première ligne du post.
+
+Les sorties complètes vont dans `out/eval/`. Utilise-le pour choisir l'ordre de la chaîne `write` et ajuster `llm.profiles`.
 
 ## Ligne éditoriale
 
-L'objectif est de ne pas ressembler aux posts tech habituels :
+- **Fond** : le mécanisme, le chiffre qui compte, le compromis, puis un verdict « use it if / skip it if ».
+- **Ton** : sérieux et dense, sans emoji, sans « ! », sans question rhétorique, sans hashtag sur Threads, sans première personne.
+- **Faits** : uniquement ceux de la source. Les commentaires HN et Reddit sont attribués comme des opinions.
+- **Visuel** : un carrousel façon fiche technique (« BRIEF 0042 »), avec des slides typées : couverture, points clés, mécanisme, code, chiffre mesuré, comparatif, verdict. La couverture affiche la popularité du sujet (étoiles, points, commentaires).
 
-- **Fond** : le mécanisme (comment ça marche), le chiffre qui compte, le compromis, et un verdict « use it if / skip it if ».
-- **Ton** : sérieux et dense, sans emoji, sans point d'exclamation, sans question rhétorique, sans hashtag sur Threads. Une liste de formules bannies (« game-changer », « dive in »…) est vérifiée automatiquement.
-- **Faits** : uniquement ceux du dossier (README, article, métadonnées). Les commentaires HN et Reddit servent aux critiques et sont attribués comme des opinions.
-- **Visuel** : un carrousel façon fiche technique (« BRIEF 0042 »), avec des slides typées : couverture, points clés, mécanisme, code, chiffre mesuré, comparatif, verdict.
+## Utilisation au quotidien (Discord)
 
-Si la sortie du LLM viole une règle (longueur, mot banni, emoji, nombre de slides), les erreurs lui sont renvoyées pour correction, jusqu'à deux fois.
-
-## Démarrage rapide (local)
-
-```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-playwright install chromium
-cp .env.example .env            # au minimum une clé LLM
-
-veille demo --out out/demo      # rend le carrousel d'exemple, sans aucune clé
-veille collect                  # collecte + classement (le tri éditorial appelle le LLM)
-veille draft --out out/draft    # brouillon complet en local : texte + slides, sans Discord ni publication
-pytest                          # tests
-```
-
-## Configuration
-
-- **`.env`** : secrets (clés API, tokens). Voir `.env.example`.
-- **`config.yaml`** : tout le reste (sources, subreddits, langages GitHub, seuils, créneaux, marque et couleur, modèles).
-
-### LLM : trois fournisseurs, bascule automatique
-
-Les trois fournisseurs exposent une API compatible OpenAI, donc un seul client sert pour les trois. Chaque tâche a une chaîne de modèles : en cas d'erreur, de quota dépassé ou de réponse vide, la suivante est essayée. Les entrées sans clé API sont ignorées.
-
-```yaml
-llm:
-  tasks:
-    triage:   # tri éditorial des candidats, modèle rapide
-      - {provider: google, model: gemini-flash-latest}
-      - {provider: openrouter, model: google/gemini-3.8-flash}
-      - {provider: orcarouter, model: orcarouter/auto}
-    write:    # rédaction, meilleur modèle
-      - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
-      - {provider: google, model: gemini-pro-latest}
-      - {provider: orcarouter, model: orcarouter/auto}
-```
-
-| Fournisseur | Variable | Clé |
-|---|---|---|
-| Google AI Studio | `GOOGLE_AI_API_KEY` | https://aistudio.google.com/apikey |
-| OpenRouter | `OPENROUTER_API_KEY` | https://openrouter.ai/keys |
-| OrcaRouter | `ORCAROUTER_API_KEY` | https://orcarouter.ai |
-
-Les identifiants de modèles évoluent vite. Vérifie-les dans le catalogue de chaque fournisseur et ajuste `config.yaml`.
-
-## Mise en place des services
-
-### 1. Discord (validation)
-
-1. Crée une application sur https://discord.com/developers/applications, puis un bot. Copie son token dans `DISCORD_BOT_TOKEN`.
-2. Invite-le sur ton serveur avec les permissions *Send Messages*, *Attach Files*, *Embed Links* et *Read Message History* : OAuth2 → URL Generator, scope `bot`.
-3. Active le mode développeur de Discord, puis copie l'ID du salon (`DISCORD_CHANNEL_ID`) et ton ID utilisateur (`DISCORD_ALLOWED_USER_IDS`). Seuls ces utilisateurs peuvent appuyer sur les boutons.
-
-Chaque brouillon arrive 2 heures avant son créneau, avec le texte, les slides et ces boutons :
+Chaque brouillon arrive **2 heures avant son créneau**, avec les slides et ces boutons :
 
 | Bouton | Effet |
 |---|---|
-| Approve for slot | Publication automatique à 8h ou 19h. Si le créneau est déjà passé, publication dans la minute. |
+| Approve for slot | Publication à 8h ou 19h. Si le créneau est passé, publication dans la minute. |
 | Publish now | Publication immédiate. |
 | Edit text | Modifier le post et la réponse Threads, avec contrôle des 500 caractères. |
-| Regenerate | Nouvelle version, avec une consigne optionnelle (« focus on the benchmark »…). |
+| Regenerate | Nouvelle version, avec une consigne optionnelle (« focus on the benchmark »…). Le harnais réutilise la même fiche de faits. |
 | Another topic | Rejette le sujet et rédige le suivant pour le même créneau. |
 | Reject | Rejette le sujet, qui ne sera plus proposé. |
 | Retry publish | Après un échec, relance uniquement les plateformes qui ont échoué. |
 
-### 2. Serveur public pour les médias
+Les commandes slash :
 
-Threads et TikTok **téléchargent** les slides depuis une URL publique en HTTPS. `docker-compose.yml` inclut Caddy, qui obtient le certificat HTTPS automatiquement :
+- `/draft [instruction]` : génère un brouillon tout de suite pour le prochain créneau libre.
+- `/status` : affiche les prochains créneaux, l'état des brouillons et les plateformes connectées.
 
-- `DOMAIN=veille.ton-domaine.com` : un enregistrement DNS A doit pointer vers le VPS.
-- `PUBLIC_BASE_URL=https://veille.ton-domaine.com`
+Le fonctionnement automatique :
 
-Les slides sont servies sous `/media/<id>-<jeton aléatoire>/slide-01.jpg`.
+- **Échec de génération** : nouvelle tentative 20 minutes plus tard, si le créneau le permet.
+- **Rappel** : à l'heure du créneau, si le brouillon n'est pas encore validé.
+- **Redémarrage** : si un créneau est imminent sans brouillon, il est généré au démarrage.
 
-### 3. Threads
+## Configuration (`config.yaml`)
 
+Tout ce qui n'est pas secret se règle ici :
+
+- sources, subreddits, langages GitHub et seuils ;
+- créneaux et délai de préparation ;
+- marque, `handle`, couleur et hashtags TikTok fixes ;
+- chaînes de modèles par tâche (`triage`, `facts`, `write`, `judge`) ;
+- profils par modèle ;
+- seuils du harnais (`min_score`, `max_revisions`, `exemplars`) ;
+- mode TikTok.
+
+Les identifiants de modèles évoluent vite. `veille doctor` signale tout identifiant inconnu d'un fournisseur.
+
+## Mise en place des comptes
+
+### Discord
+1. Crée une application sur https://discord.com/developers/applications, ajoute un bot et copie son token dans `DISCORD_BOT_TOKEN`.
+2. Dans OAuth2 → URL Generator, coche les scopes `bot` et `applications.commands`, et les permissions *Send Messages*, *Attach Files*, *Embed Links* et *Read Message History*. Ouvre l'URL générée pour inviter le bot sur ton serveur.
+3. Active le mode développeur de Discord, puis fais un clic droit pour copier l'ID du salon (`DISCORD_CHANNEL_ID`) et ton ID utilisateur (`DISCORD_ALLOWED_USER_IDS`).
+
+### Domaine et HTTPS
+Crée un enregistrement DNS A de `DOMAIN` vers l'IP du serveur, et ouvre les ports 80 et 443. Caddy obtient le certificat tout seul.
+
+### Threads
 1. Crée une app Meta avec le cas d'usage « Access the Threads API » : https://developers.facebook.com/apps
-2. Ajoute ton compte Threads comme testeur, puis génère un **token longue durée** (60 jours) avec les permissions `threads_basic` et `threads_content_publish`. Mets-le dans `THREADS_ACCESS_TOKEN`.
-3. Le token est rafraîchi automatiquement chaque nuit. Tu peux aussi le rafraîchir à la main avec `veille threads-refresh`.
+2. Ajoute ton compte Threads comme testeur, puis génère un **token longue durée** avec `threads_basic` et `threads_content_publish`. Mets-le dans `THREADS_ACCESS_TOKEN`.
 
-La publication suit cet ordre :
-
+La publication se fait en deux temps :
 1. Le post principal, avec le carrousel des slides.
-2. Une réponse contenant le détail technique supplémentaire et le lien vers la source. Le lien est hors du post principal pour ne pas pénaliser sa portée.
+2. Une réponse contenant le lien vers la source. Le lien est hors du post principal pour ne pas pénaliser sa portée.
 
-### 4. TikTok
+### TikTok
+1. Crée une app sur https://developers.tiktok.com avec *Login Kit* et *Content Posting API*, et les scopes `user.info.basic`, `video.upload` et `video.publish`.
+2. Configure le redirect URI `https://DOMAIN/tiktok/callback`.
+3. **Vérifie le domaine** (enregistrement DNS TXT) : TikTok ne récupère les photos que depuis un domaine vérifié.
+4. Lance `docker compose exec app veille tiktok-auth`, ouvre l'URL et autorise l'accès.
 
-1. Crée une app sur https://developers.tiktok.com avec les produits *Login Kit* et *Content Posting API*, et les scopes `user.info.basic`, `video.upload` et `video.publish`.
-2. Configure le redirect URI `https://veille.ton-domaine.com/tiktok/callback`, puis remplis `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` et `TIKTOK_REDIRECT_URI`.
-3. **Vérifie ton domaine** : TikTok n'accepte les photos que depuis un domaine vérifié. Le plus simple est la vérification par enregistrement DNS TXT sur `veille.ton-domaine.com`. Si tu choisis plutôt un fichier `.txt` servi à la racine, dépose-le dans `data/public/`.
-4. Le serveur doit tourner. Lance `docker compose exec app veille tiktok-auth`, ouvre l'URL affichée et autorise l'accès : le token est enregistré automatiquement.
+Deux modes, réglés dans `publish.tiktok.mode` :
+- `MEDIA_UPLOAD` (par défaut) : le carrousel arrive dans ta boîte de réception TikTok. Tu ajoutes une musique et tu publies depuis l'app.
+- `DIRECT_POST` : publication directe, mais **privée tant que l'app TikTok n'a pas passé l'audit**.
 
-Deux modes de publication, réglés dans `config.yaml` → `publish.tiktok.mode` :
+### Reddit
+Crée une app de type *script* sur https://www.reddit.com/prefs/apps.
 
-- `MEDIA_UPLOAD` (par défaut) : le carrousel arrive dans ta **boîte de réception TikTok**. Tu ajoutes une musique et tu publies depuis l'app, ce qui est de toute façon conseillé pour la portée.
-- `DIRECT_POST` : publication directe. **Tant que ton app TikTok n'a pas passé l'audit, ces posts restent privés** (limitation de TikTok).
-
-### 5. Reddit
-
-Crée une app de type *script* sur https://www.reddit.com/prefs/apps et remplis `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` et `REDDIT_USER_AGENT`. Sans identifiants, les endpoints JSON publics sont utilisés, mais Reddit les bloque souvent.
-
-## Déploiement (VPS)
+## Développement
 
 ```bash
-git clone <repo> veille && cd veille
-cp .env.example .env && nano .env
-mkdir -p data && sudo chown 1000:1000 data     # le conteneur tourne en utilisateur non-root
-docker compose up -d --build
-docker compose logs -f app
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]" && playwright install chromium
+pytest && ruff check src tests
+
+veille demo --out out/demo       # carrousel d'exemple, sans aucune clé
+veille collect                   # collecte + classement
+veille draft --out out/draft     # brouillon complet en local (harnais inclus), sans Discord ni publication
+veille eval                      # comparer les modèles
+veille doctor [--offline]        # diagnostic
 ```
 
-Un seul processus fait tourner trois choses :
+Les tests couvrent :
+- les parsers des sources et le classement ;
+- la bascule LLM et les profils par modèle ;
+- tout le harnais (avec un faux LLM) ;
+- la normalisation et la vérification des chiffres ;
+- le rendu et la détection de débordement ;
+- la publication idempotente ;
+- la logique du bot Discord ;
+- un **test de bout en bout** : un faux serveur compatible OpenAI, interrogé en vrai HTTP, de la collecte jusqu'aux slides.
 
-- **le bot Discord** ;
-- **l'ordonnanceur** : brouillon à 6h et à 17h, vérification chaque minute des brouillons approuvés à publier, rafraîchissement du token Threads chaque nuit ;
-- **le serveur de médias**.
-
-Au redémarrage, si un créneau est imminent et n'a pas encore de brouillon, il en génère un.
-
-Les données (SQLite, slides, tokens) sont dans `./data`. Sauvegarde ce dossier.
+Les données (SQLite, slides, tokens) sont dans le volume Docker `veille_data`. Sauvegarde : `docker compose cp app:/app/data ./backup`.
 
 ## Structure
 
 ```
 src/veille/
-  sources/          github.py · hackernews.py · reddit.py · dossier de recherche (__init__.py)
-  ranking.py        fusion des doublons, score heuristique, anti-répétition, tri éditorial LLM
-  llm.py            client compatible OpenAI multi-fournisseurs + bascule + JSON validé et réparé
-  prompts.py        ligne éditoriale (tri + rédaction)
-  writer.py         rédaction + contrôles éditoriaux
-  carousel/         template HTML des slides + rendu Playwright en JPEG
-  publishers/       threads.py · tiktok.py
+  sources/          github · hackernews · reddit · dossier de recherche
+  ranking.py        fusion des doublons, score, anti-répétition, tri éditorial LLM
+  llm.py            client compatible OpenAI multi-fournisseurs, bascule, profils, JSON validé et réparé
+  harness/          harnais de cohérence : style · facts · normalize · prompts · exemplars/ · evaluate
+  carousel/         template HTML + rendu Playwright, mesure de débordement et ajustement automatique
+  publishers/       threads · tiktok
   pipeline.py       orchestration, créneaux, publication idempotente
-  bot.py            bot Discord + ordonnanceur
+  bot.py            bot Discord, commandes slash, ordonnanceur
   web.py            serveur de médias + callback OAuth TikTok
+  doctor.py         diagnostic de configuration
   cli.py            commandes `veille …`
 ```

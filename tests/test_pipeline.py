@@ -25,8 +25,9 @@ def test_upcoming_slots_across_dst_change():
 
 
 class FakePublisher:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, configured=True):
         self.fail = fail
+        self.configured = configured
         self.calls = []
 
     async def publish(self, *args):
@@ -104,3 +105,41 @@ def test_edit_threads_validates_length(pipeline, sample_content):
     assert pipeline.db.get_draft(draft_id)["content"]["threads"] == {"post": "New post", "reply": "New reply"}
     with pytest.raises(ValidationError):
         pipeline.edit_threads(draft_id, "x" * 600, "")
+
+
+async def test_unconfigured_platform_is_skipped_not_failed(pipeline, sample_content):
+    pipeline.tiktok = FakePublisher(configured=False)
+    draft_id = make_draft(pipeline, sample_content, datetime.now(UTC))
+    outcome = await pipeline.publish(draft_id)
+    assert outcome["errors"] == []
+    assert outcome["skipped"] == ["tiktok"]
+    assert pipeline.db.get_draft(draft_id)["status"] == DraftStatus.PUBLISHED
+
+
+async def test_no_platform_at_all_is_an_error(pipeline, sample_content):
+    pipeline.threads = FakePublisher(configured=False)
+    pipeline.tiktok = FakePublisher(configured=False)
+    draft_id = make_draft(pipeline, sample_content, datetime.now(UTC))
+    outcome = await pipeline.publish(draft_id)
+    assert "no platform is configured" in outcome["errors"][0]
+
+
+def test_has_substance():
+    from veille.pipeline import has_substance
+
+    assert not has_substance("TITLE: x\nURL: y")
+    assert has_substance("README:\n" + "x" * 2000)
+    assert has_substance("PRACTITIONER COMMENTS (opinions, not facts):\n" + "x" * 2000)
+
+
+def test_free_slot_skips_slots_with_drafts(pipeline, sample_content):
+    first = pipeline.next_slot()
+    make_draft(pipeline, sample_content, first, DraftStatus.PENDING)
+    assert pipeline.free_slot() > first
+
+
+def test_validated_contents_and_hooks(pipeline, sample_content):
+    make_draft(pipeline, sample_content, datetime.now(UTC), DraftStatus.PUBLISHED)
+    make_draft(pipeline, sample_content, datetime.now(UTC), DraftStatus.REJECTED)
+    assert len(pipeline.db.validated_contents(5)) == 1
+    assert pipeline.db.recent_hooks() == [sample_content.threads.post.splitlines()[0]]

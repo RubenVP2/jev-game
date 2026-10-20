@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS drafts (
     media TEXT NOT NULL DEFAULT '[]',
     discord_message_id INTEGER,
     results TEXT NOT NULL DEFAULT '{}',
+    meta TEXT NOT NULL DEFAULT '{}',
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -68,6 +69,13 @@ class Database:
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        columns = {r["name"] for r in self._conn.execute("PRAGMA table_info(drafts)")}
+        if "meta" not in columns:
+            with self._tx() as c:
+                c.execute("ALTER TABLE drafts ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'")
 
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
@@ -135,7 +143,7 @@ class Database:
         return self._draft(row) if row else None
 
     def update_draft(self, draft_id: int, **fields: Any) -> None:
-        for key in ("content", "media", "results"):
+        for key in ("content", "media", "results", "meta"):
             if key in fields:
                 fields[key] = json.dumps(fields[key])
         if isinstance(fields.get("status"), DraftStatus):
@@ -181,9 +189,34 @@ class Database:
         d["content"] = json.loads(d["content"])
         d["media"] = json.loads(d["media"])
         d["results"] = json.loads(d["results"])
+        d["meta"] = json.loads(d["meta"])
         d["slot_at"] = datetime.fromisoformat(d["slot_at"])
         d["status"] = DraftStatus(d["status"])
         return d
+
+    def validated_contents(self, limit: int) -> list[dict[str, Any]]:
+        """Content of the drafts a human approved, newest first: the best references for the house voice."""
+        rows = self._conn.execute(
+            "SELECT content FROM drafts WHERE status IN (?, ?, ?) ORDER BY updated_at DESC LIMIT ?",
+            (DraftStatus.APPROVED.value, DraftStatus.PUBLISHING.value, DraftStatus.PUBLISHED.value, limit),
+        ).fetchall()
+        return [json.loads(r["content"]) for r in rows]
+
+    def recent_hooks(self, limit: int = 8) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT content FROM drafts WHERE status != ? ORDER BY id DESC LIMIT ?",
+            (DraftStatus.REJECTED.value, limit),
+        ).fetchall()
+        hooks = []
+        for r in rows:
+            post = json.loads(r["content"]).get("threads", {}).get("post", "").strip()
+            if post:
+                hooks.append(post.splitlines()[0])
+        return hooks
+
+    def stats(self) -> dict[str, int]:
+        rows = self._conn.execute("SELECT status, COUNT(*) AS n FROM drafts GROUP BY status").fetchall()
+        return {r["status"]: r["n"] for r in rows}
 
     # --- tokens --------------------------------------------------------------
 

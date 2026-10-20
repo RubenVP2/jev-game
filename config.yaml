@@ -13,6 +13,7 @@ brand:
   tagline: "Engineering signal, no noise."
   handle: "@yourhandle"
   accent: "#7CFFB2"
+  tiktok_hashtags: ["#softwareengineering", "#tech"]
 
 sources:
   github:
@@ -48,17 +49,42 @@ llm:
     orcarouter:
       base_url: https://api.orcarouter.ai/v1
       api_key_env: ORCAROUTER_API_KEY
-  # Each task tries its chain in order and falls back to the next entry
-  # on error. Entries whose provider has no API key are skipped.
+  # Each task tries its chain in order. For structured output one model owns the whole
+  # write -> validate -> repair loop; the next model only takes over from scratch.
+  # Entries whose provider has no API key are skipped, so one key is enough to run.
   tasks:
-    triage:
+    triage:   # editorial ranking of candidate stories (fast model)
       - {provider: google, model: gemini-flash-latest}
       - {provider: openrouter, model: google/gemini-3.8-flash}
       - {provider: orcarouter, model: orcarouter/auto}
-    write:
+    facts:    # fact sheet extraction from the dossier (long context, precise)
+      - {provider: google, model: gemini-pro-latest}
+      - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
+      - {provider: orcarouter, model: orcarouter/auto}
+    write:    # the brief itself
       - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
       - {provider: google, model: gemini-pro-latest}
       - {provider: orcarouter, model: orcarouter/auto}
+    judge:    # editor review; a different family than the writer avoids self-preference
+      - {provider: google, model: gemini-pro-latest}
+      - {provider: openrouter, model: openai/gpt-5.5}
+      - {provider: orcarouter, model: orcarouter/auto}
+  # Per-model adjustments, matched on "provider/model" (shell patterns, merged in order).
+  profiles:
+    "google/*": {json_mode: true}
+    "openrouter/google/*": {json_mode: true}
+    "openrouter/openai/*": {omit_temperature: true}
+    "*gemini*":
+      extra_system: "Respect every character limit literally. Prefer the shorter phrasing."
+    "*deepseek*":
+      extra_system: "Output the JSON object only, without any reasoning text."
+
+harness:
+  judge_enabled: true
+  min_score: 7.5        # judge score (0-10) under which the draft is revised
+  max_revisions: 2
+  exemplars: 3          # approved posts (then golden examples) injected as style references
+  enforce_grounding: true
 
 carousel:
   width: 1080

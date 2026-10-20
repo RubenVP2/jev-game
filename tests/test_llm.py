@@ -1,25 +1,9 @@
-from types import SimpleNamespace
-
 import pytest
 from pydantic import BaseModel
 
+from conftest import FakeClient
+from veille.config import ModelChoice, ModelProfile
 from veille.llm import LLM, LLMError, extract_json
-
-
-class FakeClient:
-    """Stands in for AsyncOpenAI: each call pops the next answer (a string, or an exception to raise)."""
-
-    def __init__(self, answers):
-        self.answers = list(answers)
-        self.requests = []
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
-
-    async def _create(self, **kwargs):
-        self.requests.append(kwargs)
-        answer = self.answers.pop(0)
-        if isinstance(answer, Exception):
-            raise answer
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=answer))])
 
 
 def llm_with(settings, **clients):
@@ -80,3 +64,39 @@ async def test_complete_json_gives_up(settings):
     llm = llm_with(settings, first=FakeClient(["nope"] * 3))
     with pytest.raises(LLMError, match="still invalid"):
         await llm.complete_json("write", "sys", "user", Answer, repairs=2)
+
+
+async def test_repairs_stay_on_the_same_model(settings):
+    """A model that cannot produce valid output is replaced from scratch, never patched by another one."""
+    first = FakeClient(["bad"] * 3)
+    second = FakeClient(['{"value": 9}'])
+    llm = llm_with(settings, first=first, second=second)
+    result = await llm.complete_json("write", "sys", "user", Answer, repairs=2)
+    assert result.value == 9
+    assert len(first.requests) == 3
+    assert len(second.requests[0]["messages"]) == 2  # fresh conversation, no trace of the first model
+    assert llm.last_model == "second/m2"
+
+
+async def test_profiles_adjust_the_request(settings):
+    settings.app.llm.profiles = {
+        "first/*": ModelProfile(json_mode=True, omit_temperature=True, extra_system="Be brief."),
+        "*m1": ModelProfile(max_tokens=123),
+    }
+    client = FakeClient(['{"value": 1}'])
+    await llm_with(settings, first=client).complete_json("write", "SYSTEM", "user", Answer)
+    request = client.requests[0]
+    assert "temperature" not in request
+    assert request["max_tokens"] == 123
+    assert request["response_format"] == {"type": "json_object"}
+    assert request["messages"][0]["content"] == "SYSTEM\n\nBe brief."
+
+
+def test_reasoning_tags_are_ignored():
+    assert extract_json('<think>{"a": 0}</think>{"a": 1}') == {"a": 1}
+
+
+def test_profile_merge_order(settings):
+    settings.app.llm.profiles = {"*": ModelProfile(temperature=0.2), "first/m1": ModelProfile(temperature=0.9)}
+    assert LLM(settings).profile(ModelChoice(provider="first", model="m1")).temperature == 0.9
+    assert LLM(settings).profile(ModelChoice(provider="second", model="m2")).temperature == 0.2

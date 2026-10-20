@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,9 +24,10 @@ class Secrets(BaseSettings):
     reddit_user_agent: str = "veille/0.1"
 
     discord_bot_token: str = ""
-    discord_channel_id: int = 0
+    discord_channel_id: str = ""
     discord_allowed_user_ids: str = ""
 
+    domain: str = ""
     public_base_url: str = ""
 
     threads_access_token: str = ""
@@ -39,9 +40,22 @@ class Secrets(BaseSettings):
     veille_config: Path = Path("config.yaml")
     veille_data_dir: Path = Path("data")
 
+    @model_validator(mode="after")
+    def _derive_urls(self) -> Secrets:
+        """DOMAIN alone is enough: the public URL and the TikTok callback derive from it."""
+        if not self.public_base_url and self.domain:
+            self.public_base_url = f"https://{self.domain}"
+        if not self.tiktok_redirect_uri and self.public_base_url:
+            self.tiktok_redirect_uri = f"{self.public_base_url.rstrip('/')}/tiktok/callback"
+        return self
+
+    @property
+    def channel_id(self) -> int:
+        return int(self.discord_channel_id) if self.discord_channel_id.strip().isdigit() else 0
+
     @property
     def allowed_user_ids(self) -> set[int]:
-        return {int(x) for x in self.discord_allowed_user_ids.split(",") if x.strip()}
+        return {int(x) for x in self.discord_allowed_user_ids.replace(" ", "").split(",") if x.isdigit()}
 
 
 class ScheduleConfig(BaseModel):
@@ -54,6 +68,8 @@ class BrandConfig(BaseModel):
     tagline: str = "Engineering signal, no noise."
     handle: str = ""
     accent: str = "#7CFFB2"
+    # Always present on TikTok, after the topic hashtags.
+    tiktok_hashtags: list[str] = ["#softwareengineering", "#tech"]
 
 
 class GithubConfig(BaseModel):
@@ -97,9 +113,30 @@ class ModelChoice(BaseModel):
     model: str
 
 
+class ModelProfile(BaseModel):
+    """Per-model adjustments, matched on "provider/model" with shell patterns (e.g. "openrouter/openai/*")."""
+
+    temperature: float | None = None  # overrides the task temperature
+    omit_temperature: bool = False  # for reasoning models that reject the parameter
+    max_tokens: int | None = None
+    json_mode: bool = False  # send response_format={"type": "json_object"}
+    extra_system: str = ""  # appended to the system prompt, to correct a model's known habits
+
+
 class LLMConfig(BaseModel):
     providers: dict[str, ProviderConfig] = {}
     tasks: dict[str, list[ModelChoice]] = {}
+    profiles: dict[str, ModelProfile] = {}
+
+
+class HarnessConfig(BaseModel):
+    """Consistency harness: keeps the voice identical whatever model writes."""
+
+    judge_enabled: bool = True
+    min_score: float = 7.5  # judge score (0-10) under which the draft is revised
+    max_revisions: int = 2
+    exemplars: int = 3  # approved posts injected as style references
+    enforce_grounding: bool = True  # every figure in the post must appear in the dossier
 
 
 class CarouselConfig(BaseModel):
@@ -134,6 +171,7 @@ class AppConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     carousel: CarouselConfig = CarouselConfig()
     publish: PublishConfig = PublishConfig()
+    harness: HarnessConfig = HarnessConfig()
 
 
 class Settings(BaseModel):

@@ -6,7 +6,7 @@ services:
     environment:
       VEILLE_DATA_DIR: /app/data
     volumes:
-      - ./data:/app/data
+      - veille_data:/app/data
       - ./config.yaml:/app/config.yaml:ro
     expose:
       - "8080"
@@ -26,4 +26,5 @@ services:
       - app
 
 volumes:
+  veille_data:   # SQLite, slides, tokens. Backup: docker compose cp app:/app/data ./backup
   caddy_data:

@@ -35,3 +35,18 @@ def test_post_content_requires_cover_and_verdict(sample_content):
     data["slides"] = data["slides"][:-1]
     with pytest.raises(ValidationError, match="verdict"):
         PostContent.model_validate(data)
+
+
+def test_secrets_tolerate_empty_values_and_derive_urls(monkeypatch):
+    from veille.config import Secrets
+
+    monkeypatch.setenv("DISCORD_CHANNEL_ID", "")
+    monkeypatch.setenv("DISCORD_ALLOWED_USER_IDS", "12, 34,")
+    monkeypatch.setenv("DOMAIN", "veille.test")
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("TIKTOK_REDIRECT_URI", raising=False)
+    secrets = Secrets(_env_file=None)
+    assert secrets.channel_id == 0
+    assert secrets.allowed_user_ids == {12, 34}
+    assert secrets.public_base_url == "https://veille.test"
+    assert secrets.tiktok_redirect_uri == "https://veille.test/tiktok/callback"

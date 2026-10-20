@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -52,14 +53,56 @@ def render_html(settings: Settings, content: PostContent, issue: int, date: date
     )
 
 
+# Measures how much each slide's content exceeds its frame (main block height, code block width).
+FILL = 0.94  # content may use 94% of the frame height: keeps air under the header and above the footer
+
+MEASURE_JS = """
+() => [...document.querySelectorAll('section.slide')].map((slide, i) => {
+  const main = slide.querySelector('main');
+  const kids = [...main.children];
+  const top = Math.min(...kids.map(k => k.getBoundingClientRect().top));
+  const bottom = Math.max(...kids.map(k => k.getBoundingClientRect().bottom));
+  const pre = slide.querySelector('pre');
+  return {
+    index: i + 1,
+    over: Math.max(0, (bottom - top) - FILL * main.clientHeight) / (FILL * main.clientHeight),
+    wide: pre ? Math.max(0, pre.scrollWidth - pre.clientWidth) / pre.clientWidth : 0,
+  };
+})
+"""
+
+# Last-resort fit: shrink an overflowing slide (zoom) or code block (font size) until it fits.
+AUTOFIT_JS = """
+() => document.querySelectorAll('section.slide').forEach(slide => {
+  const main = slide.querySelector('main');
+  const fits = () => {
+    const kids = [...main.children];
+    const top = Math.min(...kids.map(k => k.getBoundingClientRect().top));
+    const bottom = Math.max(...kids.map(k => k.getBoundingClientRect().bottom));
+    return bottom - top <= FILL * main.clientHeight;
+  };
+  for (let z = 1; !fits() && z > 0.66; z -= 0.02) main.style.zoom = z.toFixed(2);
+  const pre = slide.querySelector('pre');
+  for (let size = 29; pre && pre.scrollWidth > pre.clientWidth && size > 20; size -= 1) pre.style.fontSize = size + 'px';
+})
+"""
+
+
+@dataclass
+class RenderResult:
+    paths: list[Path]
+    overflows: list[str]  # problems for the writer, empty when every slide fits as written
+
+
 async def render_slides(
     settings: Settings, content: PostContent, out_dir: Path, issue: int, date: datetime, item: Item | None
-) -> list[Path]:
+) -> RenderResult:
     out_dir.mkdir(parents=True, exist_ok=True)
     html = render_html(settings, content, issue, date, item)
     (out_dir / "carousel.html").write_text(html)
     carousel = settings.app.carousel
     paths: list[Path] = []
+    overflows: list[str] = []
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH") or None)
         try:
@@ -69,10 +112,18 @@ async def render_slides(
             except Exception as exc:  # noqa: BLE001 - fonts unreachable: render with fallback fonts
                 log.warning("fonts not loaded, rendering with fallbacks: %s", exc)
             await page.evaluate("document.fonts.ready")
+            for m in await page.evaluate(MEASURE_JS.replace("FILL", str(FILL))):
+                kind = content.slides[m["index"] - 1].kind
+                if m["over"] > 0.01:
+                    pct = round(m["over"] * 100)
+                    overflows.append(f"slide {m['index']} ({kind}): text is {pct}% taller than the frame, cut it by about {pct + 10}%")
+                if m["wide"] > 0.01:
+                    overflows.append(f"slide {m['index']} ({kind}): code lines are too wide, keep them under 48 characters")
+            await page.evaluate(AUTOFIT_JS.replace("FILL", str(FILL)))
             for n in range(1, len(content.slides) + 1):
                 path = out_dir / f"slide-{n:02d}.jpg"
                 await page.locator(f"#slide-{n}").screenshot(path=str(path), type="jpeg", quality=92)
                 paths.append(path)
         finally:
             await browser.close()
-    return paths
+    return RenderResult(paths, overflows)

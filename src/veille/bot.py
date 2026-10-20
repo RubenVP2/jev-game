@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from . import web
 from .models import DraftStatus, threads_length
-from .pipeline import NoCandidate, Pipeline, parse_slot
+from .pipeline import NoCandidate, Pipeline, parse_slot, upcoming_slots
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ ACTIONS = {
     "retry": ("Retry publish", discord.ButtonStyle.primary, 0),
     "unapprove": ("Cancel approval", discord.ButtonStyle.secondary, 0),
 }
+
+RETRY_DELAY = timedelta(minutes=20)
 
 STATUS_ACTIONS = {
     DraftStatus.PENDING: ["approve", "now", "edit", "regen", "another", "reject"],
@@ -109,9 +111,41 @@ class VeilleBot(discord.Client):
         super().__init__(intents=discord.Intents.default())
         self.pipeline = pipeline
         self.settings = pipeline.settings
-        self.scheduler = AsyncIOScheduler(timezone=pipeline.tz)
+        # A busy event loop (rendering, LLM calls) must delay jobs, never drop them.
+        self.scheduler = AsyncIOScheduler(timezone=pipeline.tz, job_defaults={"misfire_grace_time": 900, "coalesce": True})
         self.draft_lock = asyncio.Lock()
         self._web_runner = None
+        self._tasks: set[asyncio.Task] = set()
+        self._synced = False
+        self.tree = discord.app_commands.CommandTree(self)
+        self._register_commands()
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def _register_commands(self) -> None:
+        @self.tree.command(name="draft", description="Draft a post now for the next free slot")
+        @discord.app_commands.describe(instruction="Optional writing instruction, e.g. 'focus on the benchmark methodology'")
+        async def draft(interaction: discord.Interaction, instruction: str | None = None) -> None:
+            if not await self._authorized(interaction):
+                return
+            slot = self.pipeline.free_slot()
+            await interaction.response.send_message(f"Drafting for {self._fmt(slot)}...", ephemeral=True)
+            self._spawn(self.prepare_next_slot(slot, instruction or ""))
+
+        @self.tree.command(name="status", description="Upcoming slots, drafts and connected platforms")
+        async def status(interaction: discord.Interaction) -> None:
+            if not await self._authorized(interaction):
+                return
+            await interaction.response.send_message("\n".join(self.pipeline.status_lines())[:2000], ephemeral=True)
+
+    async def _authorized(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id in self.settings.secrets.allowed_user_ids:
+            return True
+        await interaction.response.send_message("You are not allowed to review drafts (DISCORD_ALLOWED_USER_IDS).", ephemeral=True)
+        return False
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -123,17 +157,26 @@ class VeilleBot(discord.Client):
             t = parse_slot(slot)
             fire = datetime(2000, 1, 1, t.hour, t.minute) - lead
             self.scheduler.add_job(self.prepare_next_slot, CronTrigger(hour=fire.hour, minute=fire.minute), name=f"draft {slot}")
+            self.scheduler.add_job(self.remind_pending, CronTrigger(hour=t.hour, minute=t.minute), name=f"remind {slot}")
         self.scheduler.add_job(self.publish_due, IntervalTrigger(minutes=1), name="publish due drafts")
         self.scheduler.add_job(self.pipeline.threads.refresh_token, CronTrigger(hour=4, minute=17), name="threads token")
         self.scheduler.start()
 
     async def on_ready(self) -> None:
         log.info("discord bot ready as %s", self.user)
+        if not self._synced:  # on_ready also fires on reconnects
+            self._synced = True
+            channel = await self.channel()
+            guild = getattr(channel, "guild", None)
+            if guild is not None:
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)  # guild commands are available immediately
+            await self.notify(f"**{self.settings.app.brand.name}** online.\n" + "\n".join(self.pipeline.status_lines()))
         # Catch up after a restart: the draft for an imminent slot may not exist yet.
         slot = self.pipeline.next_slot()
         lead = timedelta(minutes=self.settings.app.schedule.draft_lead_minutes)
         if slot - datetime.now(UTC) <= lead and self.pipeline.db.active_draft_for_slot(slot) is None:
-            asyncio.create_task(self.prepare_next_slot())
+            self._spawn(self.prepare_next_slot())
 
     async def close(self) -> None:
         self.scheduler.shutdown(wait=False)
@@ -143,7 +186,7 @@ class VeilleBot(discord.Client):
         await super().close()
 
     async def channel(self) -> discord.abc.Messageable:
-        channel_id = self.settings.secrets.discord_channel_id
+        channel_id = self.settings.secrets.channel_id
         return self.get_channel(channel_id) or await self.fetch_channel(channel_id)
 
     async def notify(self, text: str) -> None:
@@ -151,21 +194,40 @@ class VeilleBot(discord.Client):
 
     # --- jobs ----------------------------------------------------------------
 
-    async def prepare_next_slot(self, slot: datetime | None = None) -> None:
+    async def prepare_next_slot(self, slot: datetime | None = None, instruction: str = "") -> None:
         slot = slot or self.pipeline.next_slot()
         async with self.draft_lock:
             if self.pipeline.db.active_draft_for_slot(slot) is not None:
                 return
             try:
-                draft_id = await self.pipeline.create_draft(slot)
+                draft_id = await self.pipeline.create_draft(slot, instruction=instruction)
             except NoCandidate as exc:
                 await self.notify(f"No draft for {self._fmt(slot)}: {exc}")
                 return
             except Exception as exc:  # noqa: BLE001 - surfaced on Discord instead of dying silently
                 log.exception("draft generation failed")
-                await self.notify(f"Draft generation failed for {self._fmt(slot)}: `{exc}`")
+                retry_at = datetime.now(UTC) + RETRY_DELAY
+                retry = slot - retry_at > timedelta(minutes=5)
+                if retry:
+                    self.scheduler.add_job(self.prepare_next_slot, "date", run_date=retry_at, args=[slot, instruction])
+                await self.notify(
+                    f"Draft generation failed for {self._fmt(slot)}: `{str(exc)[:500]}`"
+                    + (f"\nRetrying at {self._fmt(retry_at)}." if retry else "\nUse /draft to try again.")
+                )
                 return
         await self.post_draft(draft_id)
+
+    async def remind_pending(self) -> None:
+        """At slot time, a draft still waiting for review gets a reminder (it publishes as soon as approved)."""
+        now = datetime.now(UTC)
+        recent = upcoming_slots(self.settings.app.schedule.slots, self.pipeline.tz, now - timedelta(hours=1))
+        past = [s for s in recent if s <= now]
+        if not past:
+            return
+        slot = past[-1]
+        draft = self.pipeline.db.active_draft_for_slot(slot)
+        if draft and draft["status"] == DraftStatus.PENDING:
+            await self.notify(f"Draft #{draft['id']} for {self._fmt(slot)} is still waiting for review. Approve it to publish right away.")
 
     async def publish_due(self) -> None:
         for draft_id, outcome in await self.pipeline.publish_due():
@@ -186,6 +248,7 @@ class VeilleBot(discord.Client):
         if tiktok:
             where = "sent to your TikTok inbox, finish it in the app" if tiktok.get("mode") == "MEDIA_UPLOAD" else tiktok.get("status")
             lines.append(f"TikTok: {where}")
+        lines += [f"Skipped (not configured): {name}" for name in outcome.get("skipped", [])]
         lines += [f"Error: {e}" for e in outcome["errors"]]
         return "\n".join(lines)
 
@@ -201,6 +264,16 @@ class VeilleBot(discord.Client):
         embed.add_field(name=f"Threads reply ({threads_length(reply)}/500)", value=reply[:1024] or "-", inline=False)
         embed.add_field(name="TikTok title", value=content["tiktok"]["title"][:1024], inline=False)
         embed.add_field(name="TikTok description", value=content["tiktok"]["description"][:1024], inline=False)
+        meta = draft.get("meta") or {}
+        if meta.get("writer"):
+            quality = f"written by `{meta['writer']}`"
+            if meta.get("score") is not None:
+                quality += f" · editor score **{meta['score']:.1f}/10** by `{meta.get('judge', '?')}`"
+            if meta.get("revisions"):
+                quality += f" · {meta['revisions']} revision(s)"
+            if meta.get("open_issues"):
+                quality += "\nOpen issues:\n" + "\n".join(f"- {i}" for i in meta["open_issues"][:5])
+            embed.add_field(name="Harness", value=quality[:1024], inline=False)
         if item:
             embed.set_footer(text=f"{item.source} · score {item.score} · {item.comments} comments · {item.url}"[:2048])
         return header, embed
@@ -226,8 +299,7 @@ class VeilleBot(discord.Client):
     # --- button handling -----------------------------------------------------
 
     async def handle_action(self, interaction: discord.Interaction, action: str, draft_id: int) -> None:
-        if interaction.user.id not in self.settings.secrets.allowed_user_ids:
-            await interaction.response.send_message("You are not allowed to review drafts (DISCORD_ALLOWED_USER_IDS).", ephemeral=True)
+        if not await self._authorized(interaction):
             return
         db = self.pipeline.db
         draft = db.get_draft(draft_id)
@@ -241,15 +313,17 @@ class VeilleBot(discord.Client):
             await interaction.response.send_modal(RegenerateModal(self, draft_id))
         elif action == "approve":
             ok = db.claim_draft(draft_id, DraftStatus.PENDING, DraftStatus.APPROVED)
-            await self._ack(interaction, draft_id, f"Approved, publishing {self._fmt(draft['slot_at'])}." if ok else "Draft is no longer pending.")
+            when = "within a minute" if draft["slot_at"] <= datetime.now(UTC) else self._fmt(draft["slot_at"])
+            await self._ack(interaction, draft_id, f"Approved, publishing {when}." if ok else "Draft is no longer pending.")
         elif action == "unapprove":
             ok = db.claim_draft(draft_id, DraftStatus.APPROVED, DraftStatus.PENDING)
             await self._ack(interaction, draft_id, "Back to pending." if ok else "Draft is no longer approved.")
         elif action in {"now", "retry"}:
-            await interaction.response.send_message("Publishing...", ephemeral=True)
             expected = {"now": draft["status"], "retry": DraftStatus.FAILED}[action]
             if expected not in (DraftStatus.PENDING, DraftStatus.APPROVED, DraftStatus.FAILED):
+                await interaction.response.send_message(f"Draft is {draft['status'].value}.", ephemeral=True)
                 return
+            await interaction.response.send_message("Publishing...", ephemeral=True)
             try:
                 outcome = await self.pipeline.publish(draft_id, expected=expected)
             except RuntimeError as exc:
@@ -289,7 +363,7 @@ class VeilleBot(discord.Client):
 
 def run(pipeline: Pipeline) -> None:
     token = pipeline.settings.secrets.discord_bot_token
-    if not token or not pipeline.settings.secrets.discord_channel_id:
+    if not token or not pipeline.settings.secrets.channel_id:
         raise SystemExit("DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID are required")
     if not pipeline.settings.secrets.allowed_user_ids:
         raise SystemExit("DISCORD_ALLOWED_USER_IDS is required: only these users can approve drafts")
