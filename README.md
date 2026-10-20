@@ -44,12 +44,21 @@ Au démarrage, le bot poste son état dans le salon Discord : prochains créneau
 | `GOOGLE_AI_API_KEY` / `OPENROUTER_API_KEY` / `ORCAROUTER_API_KEY` | au moins une | LLM. Avec plusieurs clés, la bascule entre fournisseurs est automatique |
 | `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_ALLOWED_USER_IDS` | oui | Validation des brouillons |
 | `DOMAIN` | oui | Domaine qui pointe vers le serveur. Les slides y sont servies en HTTPS |
-| `THREADS_ACCESS_TOKEN` | pour Threads | Token longue durée, rafraîchi automatiquement |
-| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | pour TikTok | Puis `docker compose exec app veille tiktok-auth` une fois |
+| `THREADS_APP_ID`, `THREADS_APP_SECRET` | pour Threads | Puis `/connect Threads` sur Discord : un clic d'autorisation |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | pour TikTok | Puis `/connect TikTok` sur Discord : un clic d'autorisation |
 | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | conseillé | Sans elles, Reddit bloque souvent les serveurs |
 | `GITHUB_TOKEN` | optionnel | Relève la limite d'appels à l'API GitHub pour lire les README |
 
 **Une plateforme sans identifiants est ignorée**, pas en erreur : tu peux démarrer avec Threads seul et ajouter TikTok plus tard.
+
+Pas de token à copier-coller :
+- `/connect` sur Discord envoie un lien d'autorisation ;
+- après le clic, le token est stocké, puis rafraîchi automatiquement (Threads : 60 jours, TikTok : 24 h avec un token de renouvellement valable un an) ;
+- le bot confirme dans le salon.
+
+Le pseudo affiché sur les slides est celui du compte Threads connecté, sauf si tu en fixes un dans `brand.handle`.
+
+**Identifiants de modèles** : ceux de `config.yaml` ont été vérifiés dans le catalogue OpenRouter. Si un fournisseur retire ou renomme un modèle, le pipeline prend automatiquement le plus récent de la même famille dans son catalogue (`claude-sonnet-*`, `gemini-*-pro`…) et `veille doctor` signale le remplacement.
 
 ## Le harnais de cohérence
 
@@ -113,6 +122,7 @@ Les commandes slash :
 
 - `/draft [instruction]` : génère un brouillon tout de suite pour le prochain créneau libre.
 - `/status` : affiche les prochains créneaux, l'état des brouillons et les plateformes connectées.
+- `/connect Threads|TikTok` : lien d'autorisation à ouvrir une fois, avec confirmation dans le salon.
 
 Le fonctionnement automatique :
 
@@ -146,7 +156,10 @@ Crée un enregistrement DNS A de `DOMAIN` vers l'IP du serveur, et ouvre les por
 
 ### Threads
 1. Crée une app Meta avec le cas d'usage « Access the Threads API » : https://developers.facebook.com/apps
-2. Ajoute ton compte Threads comme testeur, puis génère un **token longue durée** avec `threads_basic` et `threads_content_publish`. Mets-le dans `THREADS_ACCESS_TOKEN`.
+2. Dans les réglages du cas d'usage, ajoute les permissions `threads_basic` et `threads_content_publish`, ainsi que le redirect URI `https://DOMAIN/threads/callback`. Ajoute ton compte Threads comme testeur et accepte l'invitation dans l'app Threads.
+3. Copie l'ID et le secret de l'app Threads dans `THREADS_APP_ID` et `THREADS_APP_SECRET`, puis tape `/connect Threads` sur Discord.
+
+Alternative sans OAuth : un token longue durée généré dans le tableau de bord, à mettre dans `THREADS_ACCESS_TOKEN`.
 
 La publication se fait en deux temps :
 1. Le post principal, avec le carrousel des slides.
@@ -156,7 +169,7 @@ La publication se fait en deux temps :
 1. Crée une app sur https://developers.tiktok.com avec *Login Kit* et *Content Posting API*, et les scopes `user.info.basic`, `video.upload` et `video.publish`.
 2. Configure le redirect URI `https://DOMAIN/tiktok/callback`.
 3. **Vérifie le domaine** (enregistrement DNS TXT) : TikTok ne récupère les photos que depuis un domaine vérifié.
-4. Lance `docker compose exec app veille tiktok-auth`, ouvre l'URL et autorise l'accès.
+4. Tape `/connect TikTok` sur Discord, ouvre le lien et autorise l'accès.
 
 Deux modes, réglés dans `publish.tiktok.mode` :
 - `MEDIA_UPLOAD` (par défaut) : le carrousel arrive dans ta boîte de réception TikTok. Tu ajoutes une musique et tu publies depuis l'app.
@@ -177,6 +190,7 @@ veille collect                   # collecte + classement
 veille draft --out out/draft     # brouillon complet en local (harnais inclus), sans Discord ni publication
 veille eval                      # comparer les modèles
 veille doctor [--offline]        # diagnostic
+veille connect threads|tiktok    # lien d'autorisation (comme /connect)
 ```
 
 Les tests couvrent :
@@ -186,6 +200,8 @@ Les tests couvrent :
 - la normalisation et la vérification des chiffres ;
 - le rendu et la détection de débordement ;
 - la publication idempotente ;
+- les appels HTTP exacts envoyés à Threads et TikTok (tests de contrat d'après leur documentation) ;
+- la connexion OAuth et la résolution automatique des modèles ;
 - la logique du bot Discord ;
 - un **test de bout en bout** : un faux serveur compatible OpenAI, interrogé en vrai HTTP, de la collecte jusqu'aux slides.
 

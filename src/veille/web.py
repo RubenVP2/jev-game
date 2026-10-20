@@ -1,9 +1,10 @@
-"""Small HTTP server: public slide URLs for Threads/TikTok, TikTok OAuth callback, domain verification files."""
+"""Small HTTP server: public slide URLs for Threads/TikTok, OAuth callbacks (Threads, TikTok), domain verification files."""
 
 from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 
@@ -11,11 +12,10 @@ from .pipeline import Pipeline
 
 log = logging.getLogger(__name__)
 
-STATE_TOKEN = "tiktok_oauth_state"
 _VERIFICATION_FILE = re.compile(r"^[A-Za-z0-9_-]+\.txt$")
 
 
-def build_app(pipeline: Pipeline) -> web.Application:
+def build_app(pipeline: Pipeline, on_connected: Callable[[str], Awaitable[None]] | None = None) -> web.Application:
     settings = pipeline.settings
     public_dir = settings.data_dir / "public"
     public_dir.mkdir(parents=True, exist_ok=True)
@@ -31,28 +31,40 @@ def build_app(pipeline: Pipeline) -> web.Application:
             raise web.HTTPNotFound()
         return web.FileResponse(path)
 
-    async def tiktok_callback(request: web.Request) -> web.Response:
-        expected = pipeline.db.get_token(STATE_TOKEN) or {}
-        if not expected or request.query.get("state") != expected.get("state"):
-            return web.Response(status=400, text="Invalid state. Run `veille tiktok-auth` again.")
-        code = request.query.get("code")
-        if not code:
-            return web.Response(status=400, text=f"TikTok returned no code: {request.query.get('error_description', '')}")
-        await pipeline.tiktok.exchange_code(code)
-        pipeline.db.set_token(STATE_TOKEN, {})
-        log.info("tiktok account connected")
-        return web.Response(text="TikTok connected. You can close this tab.")
+    def oauth_callback(platform: str):
+        async def handler(request: web.Request) -> web.Response:
+            code = request.query.get("code")
+            if not code:
+                reason = request.query.get("error_description") or request.query.get("error_message") or "no code"
+                return web.Response(status=400, text=f"Authorization refused: {reason}")
+            try:
+                message = await pipeline.complete_connect(platform, request.query.get("state", ""), code)
+            except Exception as exc:  # noqa: BLE001 - shown to the person who clicked
+                log.warning("%s connection failed: %s", platform, exc)
+                return web.Response(status=400, text=f"Connection failed: {exc}")
+            log.info(message)
+            if on_connected is not None:
+                await on_connected(message)
+            return web.Response(text=f"{message}. You can close this tab.")
+
+        return handler
 
     app = web.Application()
     app.router.add_get("/healthz", healthz)
-    app.router.add_get("/tiktok/callback", tiktok_callback)
+    app.router.add_get("/tiktok/callback", oauth_callback("tiktok"))
+    app.router.add_get("/threads/callback", oauth_callback("threads"))
     app.router.add_static("/media/", settings.media_dir, show_index=False, follow_symlinks=False)
     app.router.add_get("/{name}", verification)
     return app
 
 
-async def start(pipeline: Pipeline, host: str = "0.0.0.0", port: int = 8080) -> web.AppRunner:
-    runner = web.AppRunner(build_app(pipeline))
+async def start(
+    pipeline: Pipeline,
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    on_connected: Callable[[str], Awaitable[None]] | None = None,
+) -> web.AppRunner:
+    runner = web.AppRunner(build_app(pipeline, on_connected))
     await runner.setup()
     await web.TCPSite(runner, host, port).start()
     log.info("media server listening on %s:%s", host, port)

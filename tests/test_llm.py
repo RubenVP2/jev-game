@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from pydantic import BaseModel
 
@@ -100,3 +102,37 @@ def test_profile_merge_order(settings):
     settings.app.llm.profiles = {"*": ModelProfile(temperature=0.2), "first/m1": ModelProfile(temperature=0.9)}
     assert LLM(settings).profile(ModelChoice(provider="first", model="m1")).temperature == 0.9
     assert LLM(settings).profile(ModelChoice(provider="second", model="m2")).temperature == 0.2
+
+
+def test_pick_replacement_prefers_the_same_product_line():
+    from veille.llm import pick_replacement
+
+    catalog = ["models/gemini-2.5-pro", "models/gemini-3.1-pro-preview", "models/gemini-3.8-flash",
+               "models/gemini-3.8-flash-lite", "models/gemini-3.8-flash-image", "models/text-embedding-004"]
+    assert pick_replacement("gemini-pro-latest", catalog) == "gemini-3.1-pro-preview"
+    assert pick_replacement("gemini-flash-latest", catalog) == "gemini-3.8-flash"
+    openrouter = ["openai/gpt-5.5", "openai/gpt-oss-120b", "openai/gpt-5.6-sol", "anthropic/claude-sonnet-5.5"]
+    assert pick_replacement("openai/gpt-9", openrouter) == "openai/gpt-5.5"
+    assert pick_replacement("anthropic/claude-sonnet-9", openrouter) == "anthropic/claude-sonnet-5.5"
+    assert pick_replacement("mistral/large", openrouter) is None
+
+
+async def test_unknown_model_is_resolved_from_the_catalog(settings):
+    import httpx
+    from openai import NotFoundError
+
+    request = httpx.Request("POST", "https://first.test/v1/chat/completions")
+    not_found = NotFoundError("model not found", response=httpx.Response(404, request=request), body=None)
+    client = FakeClient([not_found, "hello", "again"])
+    client.models = SimpleNamespace(list=lambda: _async(SimpleNamespace(data=[SimpleNamespace(id="acme-pro-2"), SimpleNamespace(id="acme-flash-3")])))
+    settings.app.llm.tasks["write"] = [ModelChoice(provider="first", model="acme-pro-latest")]
+    llm = llm_with(settings, first=client)
+    assert await llm.complete("write", [{"role": "user", "content": "hi"}]) == "hello"
+    assert llm.resolved == {"first/acme-pro-latest": "acme-pro-2"}
+    assert client.requests[1]["model"] == "acme-pro-2"
+    await llm.complete("write", [{"role": "user", "content": "hi"}])
+    assert client.requests[2]["model"] == "acme-pro-2"  # remembered, no second failing call
+
+
+async def _async(value):
+    return value

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from typing import TypeVar
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError, NotFoundError
 from pydantic import BaseModel, ValidationError
 
 from .config import ModelChoice, ModelProfile, Settings
@@ -48,6 +48,47 @@ def extract_json(text: str) -> dict | list:
     return json.loads(cleaned[start : end + 1])
 
 
+_VARIANTS = {"image", "tts", "audio", "embedding", "embed", "lite", "nano", "vision", "live", "customtools",
+             "search", "banana", "native", "computer", "robotics", "batch", "realtime", "transcribe", "mini"}
+_FLOATING = {"latest", "preview", "exp", "experimental"}
+
+
+def _tokens(model: str) -> list[str]:
+    return [t for t in re.split(r"[/\-_:~]+", model.lower().removeprefix("models/")) if t]
+
+
+def _version(model: str) -> tuple[float, ...]:
+    return tuple(float(n) for n in re.findall(r"\d+(?:\.\d+)?", model.removeprefix("models/")))
+
+
+def pick_replacement(requested: str, available: list[str]) -> str | None:
+    """Newest model of the same family: 'gemini-pro-latest' -> newest '*gemini*pro*', skipping lite/image/tts variants."""
+    words = {t for t in _tokens(requested) if not re.fullmatch(r"v?[\d.]+", t) and t not in _FLOATING}
+    skip = _VARIANTS - words
+    candidates = []
+    for model in available:
+        tokens = set(_tokens(model))
+        if ":" in model or not words <= tokens or tokens & skip:
+            continue
+        stable = not tokens & _FLOATING
+        # Extra words ("oss", "codex", "sol") mean another product line: closest names first.
+        extra = len({t for t in tokens - words - _FLOATING if not re.fullmatch(r"v?[\d.]+[a-z]?", t)})
+        candidates.append((-extra, _version(model), stable, model))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][3].removeprefix("models/")
+
+
+def is_unknown_model(exc: Exception) -> bool:
+    if isinstance(exc, NotFoundError):
+        return True
+    message = str(exc).lower()
+    return isinstance(exc, BadRequestError) and "model" in message and any(
+        k in message for k in ("not found", "invalid", "does not exist", "not supported", "unknown", "no endpoints", "not a valid")
+    )
+
+
 @dataclass
 class Completion:
     text: str
@@ -64,6 +105,9 @@ class LLM:
         self.settings = settings
         self._clients: dict[str, AsyncOpenAI] = {}
         self.last_model: str = ""  # provider/model that produced the last successful answer
+        # "provider/model" configured -> model id actually used, when the configured id was unknown.
+        self.resolved: dict[str, str] = {}
+        self._catalogs: dict[str, list[str]] = {}
 
     def _client(self, provider: str) -> AsyncOpenAI:
         if provider not in self._clients:
@@ -93,7 +137,35 @@ class LLM:
             raise LLMError(f"no LLM provider with an API key configured for task {task!r}")
         return usable
 
+    async def catalog(self, provider: str) -> list[str]:
+        if provider not in self._catalogs:
+            page = await self._client(provider).models.list()
+            self._catalogs[provider] = [m.id for m in page.data]
+        return self._catalogs[provider]
+
     async def call(
+        self, choice: ModelChoice, messages: list[dict], temperature: float, max_tokens: int, json_output: bool = False
+    ) -> Completion:
+        """Call a model. If the provider no longer knows the configured id, use the newest model of its family."""
+        label = f"{choice.provider}/{choice.model}"
+        if label in self.resolved:
+            choice = ModelChoice(provider=choice.provider, model=self.resolved[label])
+        try:
+            return await self._call(choice, messages, temperature, max_tokens, json_output)
+        except Exception as exc:
+            if label in self.resolved or not is_unknown_model(exc):
+                raise
+            try:
+                replacement = pick_replacement(choice.model, await self.catalog(choice.provider))
+            except Exception:  # noqa: BLE001 - no catalog endpoint: report the original error
+                raise exc from None
+            if not replacement or replacement == choice.model:
+                raise
+            log.warning("%s is unknown to the provider, using %s instead: update config.yaml", label, replacement)
+            self.resolved[label] = replacement
+            return await self._call(ModelChoice(provider=choice.provider, model=replacement), messages, temperature, max_tokens, json_output)
+
+    async def _call(
         self, choice: ModelChoice, messages: list[dict], temperature: float, max_tokens: int, json_output: bool = False
     ) -> Completion:
         profile = self.profile(choice)

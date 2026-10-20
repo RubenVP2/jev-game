@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import secrets as pysecrets
 import time
 from urllib.parse import urlencode
 
@@ -42,8 +41,11 @@ class TikTokPublisher:
 
     # --- OAuth ---------------------------------------------------------------
 
-    def authorize_url(self) -> tuple[str, str]:
-        state = pysecrets.token_urlsafe(16)
+    @property
+    def can_connect(self) -> bool:
+        return bool(self.settings.secrets.tiktok_client_key and self.settings.secrets.tiktok_client_secret)
+
+    def authorize_url(self, state: str) -> str:
         query = urlencode({
             "client_key": self.settings.secrets.tiktok_client_key,
             "scope": SCOPES,
@@ -51,7 +53,7 @@ class TikTokPublisher:
             "redirect_uri": self.settings.secrets.tiktok_redirect_uri,
             "state": state,
         })
-        return f"{AUTHORIZE_URL}?{query}", state
+        return f"{AUTHORIZE_URL}?{query}"
 
     async def _token_request(self, **data: str) -> None:
         data |= {"client_key": self.settings.secrets.tiktok_client_key, "client_secret": self.settings.secrets.tiktok_client_secret}
@@ -78,7 +80,7 @@ class TikTokPublisher:
     async def access_token(self) -> str:
         token = self.db.get_token(TOKEN_NAME)
         if token is None:
-            raise TikTokError("TikTok is not connected: run `veille tiktok-auth`")
+            raise TikTokError("TikTok is not connected: use /connect on Discord")
         if time.time() > token["expires_at"] - 600:  # access tokens live 24 hours
             await self._token_request(grant_type="refresh_token", refresh_token=token["refresh_token"])
             token = self.db.get_token(TOKEN_NAME)

@@ -71,6 +71,47 @@ class Pipeline:
         await self.sources.aclose()
         await self.http.aclose()
 
+    # --- account connection (OAuth) --------------------------------------------
+
+    def _publisher(self, platform: str) -> ThreadsPublisher | TikTokPublisher:
+        if platform not in ("threads", "tiktok"):
+            raise ValueError(f"unknown platform {platform!r}")
+        return self.threads if platform == "threads" else self.tiktok
+
+    def connect_url(self, platform: str) -> str:
+        """Authorization link to open once; the callback on DOMAIN stores the token."""
+        publisher = self._publisher(platform)
+        if not publisher.can_connect:
+            keys = "THREADS_APP_ID/THREADS_APP_SECRET" if platform == "threads" else "TIKTOK_CLIENT_KEY/TIKTOK_CLIENT_SECRET"
+            raise ValueError(f"set {keys} in .env first")
+        if not self.settings.secrets.public_base_url:
+            raise ValueError("set DOMAIN in .env first: the authorization returns to https://DOMAIN")
+        state = secrets.token_urlsafe(16)
+        self.db.set_token(f"oauth_state:{platform}", {"state": state, "created": datetime.now(UTC).isoformat()})
+        return publisher.authorize_url(state)
+
+    async def complete_connect(self, platform: str, state: str | None, code: str) -> str:
+        """Validate the state (anti-CSRF), exchange the code, return a confirmation message."""
+        expected = self.db.get_token(f"oauth_state:{platform}") or {}
+        if state is not None and state != expected.get("state"):
+            raise ValueError("invalid or expired link: start again with /connect")
+        publisher = self._publisher(platform)
+        if platform == "threads":
+            username = await publisher.exchange_code(code)
+            message = f"Threads connected as @{username}"
+        else:
+            await publisher.exchange_code(code)
+            message = "TikTok connected"
+        self.db.set_token(f"oauth_state:{platform}", {})
+        return message
+
+    def handle(self) -> str:
+        """Footer handle: brand.handle if set, else the connected Threads username."""
+        configured = self.settings.app.brand.handle
+        if configured:
+            return configured
+        return f"@{self.threads.username}" if self.threads.username else ""
+
     # --- slots ---------------------------------------------------------------
 
     def next_slot(self, now: datetime | None = None) -> datetime:
@@ -133,7 +174,7 @@ class Pipeline:
     async def _render(self, draft_id: int, content: PostContent, item: Item | None, folder: Path) -> RenderResult:
         for old in folder.glob("slide-*.jpg"):
             old.unlink()
-        return await render_slides(self.settings, content, folder, draft_id, datetime.now(self.tz), item)
+        return await render_slides(self.settings, content, folder, draft_id, datetime.now(self.tz), item, handle=self.handle())
 
     async def _compose_and_render(
         self,

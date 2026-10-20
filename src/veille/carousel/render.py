@@ -37,13 +37,15 @@ def signal_badges(item: Item | None) -> list[tuple[str, str]]:
     return []
 
 
-def render_html(settings: Settings, content: PostContent, issue: int, date: datetime, item: Item | None) -> str:
+def render_html(
+    settings: Settings, content: PostContent, issue: int, date: datetime, item: Item | None, handle: str | None = None
+) -> str:
     brand, carousel = settings.app.brand, settings.app.carousel
     return _env.get_template("carousel.html").render(
         slides=content.slides,
         brand=brand.name,
         accent=brand.accent,
-        handle=brand.handle,
+        handle=brand.handle if handle is None else handle,
         issue=f"{issue:04d}",
         date=date.strftime("%Y-%m-%d"),
         source=SOURCE_LABELS.get(item.source, item.source.upper()) if item else "",
@@ -95,10 +97,16 @@ class RenderResult:
 
 
 async def render_slides(
-    settings: Settings, content: PostContent, out_dir: Path, issue: int, date: datetime, item: Item | None
+    settings: Settings,
+    content: PostContent,
+    out_dir: Path,
+    issue: int,
+    date: datetime,
+    item: Item | None,
+    handle: str | None = None,
 ) -> RenderResult:
     out_dir.mkdir(parents=True, exist_ok=True)
-    html = render_html(settings, content, issue, date, item)
+    html = render_html(settings, content, issue, date, item, handle)
     (out_dir / "carousel.html").write_text(html)
     carousel = settings.app.carousel
     paths: list[Path] = []

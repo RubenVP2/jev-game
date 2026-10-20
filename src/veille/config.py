@@ -32,6 +32,9 @@ class Secrets(BaseSettings):
 
     threads_access_token: str = ""
     threads_user_id: str = "me"
+    threads_app_id: str = ""
+    threads_app_secret: str = ""
+    threads_redirect_uri: str = ""
 
     tiktok_client_key: str = ""
     tiktok_client_secret: str = ""
@@ -45,8 +48,11 @@ class Secrets(BaseSettings):
         """DOMAIN alone is enough: the public URL and the TikTok callback derive from it."""
         if not self.public_base_url and self.domain:
             self.public_base_url = f"https://{self.domain}"
-        if not self.tiktok_redirect_uri and self.public_base_url:
-            self.tiktok_redirect_uri = f"{self.public_base_url.rstrip('/')}/tiktok/callback"
+        base = self.public_base_url.rstrip("/")
+        if not self.tiktok_redirect_uri and base:
+            self.tiktok_redirect_uri = f"{base}/tiktok/callback"
+        if not self.threads_redirect_uri and base:
+            self.threads_redirect_uri = f"{base}/threads/callback"
         return self
 
     @property

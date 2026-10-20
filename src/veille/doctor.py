@@ -60,8 +60,8 @@ class Doctor:
     def check_config(self) -> None:
         app = self.settings.app
         self.add("config", OK, f"slots {', '.join(app.schedule.slots)} ({app.timezone}), brand {app.brand.name!r}")
-        if app.brand.handle in ("", "@yourhandle"):
-            self.add("config", WARN, "brand.handle is still the placeholder: set your handle in config.yaml")
+        if app.brand.handle == "@yourhandle":
+            self.add("config", WARN, "brand.handle is the placeholder: leave it empty to use your Threads username")
 
     async def check_llm(self) -> None:
         providers = [p for p in self.settings.app.llm.providers if self.settings.api_key(p)]
@@ -90,13 +90,17 @@ class Doctor:
     async def _ping(self, llm: LLM, choice: ModelChoice) -> tuple[str, str]:
         start = time.monotonic()
         try:
-            completion = await llm.call(
+            await llm.call(
                 choice, [{"role": "user", "content": 'Reply with the JSON {"ok": true} and nothing else.'}],
                 temperature=0, max_tokens=400, json_output=True,
             )
         except Exception as exc:  # noqa: BLE001
-            return FAIL, f"unreachable or unknown model ({str(exc)[:160]}). Fix the model id in config.yaml"
-        return OK, f"answers in {time.monotonic() - start:.1f}s ({completion.text[:30]!r})"
+            return FAIL, explain_llm_error(exc, self.settings.app.llm.providers[choice.provider].api_key_env)
+        label = f"{choice.provider}/{choice.model}"
+        if label in llm.resolved:
+            return WARN, (f"unknown id, automatically using {llm.resolved[label]!r} "
+                          f"(answers in {time.monotonic() - start:.1f}s). Put that id in config.yaml to pin it")
+        return OK, f"answers in {time.monotonic() - start:.1f}s"
 
     async def check_sources(self, client: httpx.AsyncClient) -> None:
         if not self.live:
@@ -161,7 +165,10 @@ class Doctor:
         stored = db.get_token("threads")
         token = stored["access_token"] if stored else self.secrets.threads_access_token
         if not token:
-            self.add("threads", WARN, "THREADS_ACCESS_TOKEN missing: drafts will skip Threads")
+            if self.secrets.threads_app_id and self.secrets.threads_app_secret:
+                self.add("threads", WARN, "not connected yet: use /connect Threads on Discord (one click)")
+            else:
+                self.add("threads", WARN, "THREADS_APP_ID/THREADS_APP_SECRET missing: drafts will skip Threads")
             return
         if not self.live:
             return
@@ -181,7 +188,7 @@ class Doctor:
             return
         token = Database(self.settings.db_path).get_token(TIKTOK_TOKEN)
         if not token:
-            self.add("tiktok", WARN, "not connected yet: run `veille tiktok-auth` while the server runs")
+            self.add("tiktok", WARN, "not connected yet: use /connect TikTok on Discord (one click)")
             return
         refresh_left = (token.get("refresh_expires_at", 0) - time.time()) / 86400
         self.add("tiktok", OK if refresh_left > 14 else WARN, f"connected, mode {cfg.mode}, refresh token valid {refresh_left:.0f} more days")
@@ -214,6 +221,27 @@ class Doctor:
             self.add("render", OK, f"Chromium renders slides ({len(result.paths)} test slide)")
         except Exception as exc:  # noqa: BLE001
             self.add("render", FAIL, f"slide rendering failed: {exc}. Run `playwright install --with-deps chromium`")
+
+
+def explain_llm_error(exc: Exception, key_env: str) -> str:
+    """Turn a provider error into the action to take."""
+    from openai import APIConnectionError, AuthenticationError, PermissionDeniedError, RateLimitError
+
+    from .llm import is_unknown_model
+
+    detail = str(exc)[:160]
+    message = str(exc).lower()
+    if isinstance(exc, AuthenticationError) or "api key" in message or "api_key" in message:
+        return f"API key rejected: check {key_env} ({detail})"
+    if isinstance(exc, PermissionDeniedError):
+        return f"the key has no access to this model or region ({detail})"
+    if isinstance(exc, RateLimitError):
+        return f"rate limit or exhausted credits ({detail})"
+    if isinstance(exc, APIConnectionError):
+        return f"provider unreachable from this server ({detail})"
+    if is_unknown_model(exc):
+        return f"unknown model id and no close match in the provider catalog: fix it in config.yaml ({detail})"
+    return f"error: {detail}"
 
 
 def format_report(checks: list[Check]) -> str:

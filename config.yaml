@@ -11,7 +11,7 @@ schedule:
 brand:
   name: "SIGNAL"
   tagline: "Engineering signal, no noise."
-  handle: "@yourhandle"
+  handle: ""   # empty: taken from the connected Threads account
   accent: "#7CFFB2"
   tiktok_hashtags: ["#softwareengineering", "#tech"]
 
@@ -52,22 +52,26 @@ llm:
   # Each task tries its chain in order. For structured output one model owns the whole
   # write -> validate -> repair loop; the next model only takes over from scratch.
   # Entries whose provider has no API key are skipped, so one key is enough to run.
+  # Model ids checked against the OpenRouter catalog (Oct 2026). If a provider no longer knows an
+  # id, the newest model of the same family is used automatically and `veille doctor` reports it.
   tasks:
     triage:   # editorial ranking of candidate stories (fast model)
-      - {provider: google, model: gemini-flash-latest}
+      - {provider: google, model: gemini-3.8-flash}
       - {provider: openrouter, model: google/gemini-3.8-flash}
       - {provider: orcarouter, model: orcarouter/auto}
     facts:    # fact sheet extraction from the dossier (long context, precise)
-      - {provider: google, model: gemini-pro-latest}
+      - {provider: google, model: gemini-3.8-flash}
       - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
       - {provider: orcarouter, model: orcarouter/auto}
     write:    # the brief itself
       - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
       - {provider: google, model: gemini-pro-latest}
+      - {provider: orcarouter, model: anthropic/claude-sonnet-5.5}
       - {provider: orcarouter, model: orcarouter/auto}
     judge:    # editor review; a different family than the writer avoids self-preference
-      - {provider: google, model: gemini-pro-latest}
       - {provider: openrouter, model: openai/gpt-5.5}
+      - {provider: google, model: gemini-pro-latest}
+      - {provider: orcarouter, model: openai/gpt-5.5}
       - {provider: orcarouter, model: orcarouter/auto}
   # Per-model adjustments, matched on "provider/model" (shell patterns, merged in order).
   profiles:

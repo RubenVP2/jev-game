@@ -50,7 +50,7 @@ def bot(settings, db, monkeypatch):
 
 
 def test_commands_and_views_are_registered(bot):
-    assert {c.name for c in bot.tree.get_commands()} == {"draft", "status"}
+    assert {c.name for c in bot.tree.get_commands()} == {"draft", "status", "connect"}
     view = draft_view(7, DraftStatus.PENDING)
     assert [c.custom_id for c in view.children][:2] == ["veille:approve:7", "veille:now:7"]
     assert draft_view(7, DraftStatus.PUBLISHED) is None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from urllib.parse import urlencode
 
 import httpx
 
@@ -15,6 +16,10 @@ log = logging.getLogger(__name__)
 
 GRAPH = "https://graph.threads.net/v1.0"
 REFRESH_URL = "https://graph.threads.net/refresh_access_token"
+AUTHORIZE_URL = "https://threads.net/oauth/authorize"
+SHORT_TOKEN_URL = "https://graph.threads.net/oauth/access_token"
+LONG_TOKEN_URL = "https://graph.threads.net/access_token"
+SCOPES = "threads_basic,threads_content_publish"
 TOKEN_NAME = "threads"
 
 
@@ -38,6 +43,60 @@ class ThreadsPublisher:
         stored = self.db.get_token(TOKEN_NAME)
         return stored["access_token"] if stored else self.settings.secrets.threads_access_token
 
+    @property
+    def username(self) -> str:
+        stored = self.db.get_token(TOKEN_NAME) or {}
+        return stored.get("username", "")
+
+    @property
+    def can_connect(self) -> bool:
+        return bool(self.settings.secrets.threads_app_id and self.settings.secrets.threads_app_secret)
+
+    # --- OAuth: one click from Discord instead of copying tokens ---------------
+
+    def authorize_url(self, state: str) -> str:
+        query = urlencode({
+            "client_id": self.settings.secrets.threads_app_id,
+            "redirect_uri": self.settings.secrets.threads_redirect_uri,
+            "scope": SCOPES,
+            "response_type": "code",
+            "state": state,
+        })
+        return f"{AUTHORIZE_URL}?{query}"
+
+    async def exchange_code(self, code: str) -> str:
+        """Authorization code -> short-lived token (1 hour) -> long-lived token (60 days). Returns the username."""
+        secrets = self.settings.secrets
+        resp = await self.client.post(SHORT_TOKEN_URL, data={
+            "client_id": secrets.threads_app_id,
+            "client_secret": secrets.threads_app_secret,
+            "grant_type": "authorization_code",
+            "redirect_uri": secrets.threads_redirect_uri,
+            "code": code.removesuffix("#_"),
+        })
+        short = resp.json()
+        if resp.status_code != 200 or "access_token" not in short:
+            raise ThreadsError(f"code exchange failed: {short}")
+        resp = await self.client.get(LONG_TOKEN_URL, params={
+            "grant_type": "th_exchange_token", "client_secret": secrets.threads_app_secret, "access_token": short["access_token"],
+        })
+        long_lived = resp.json()
+        if resp.status_code != 200 or "access_token" not in long_lived:
+            raise ThreadsError(f"long-lived token exchange failed: {long_lived}")
+        self.db.set_token(TOKEN_NAME, {
+            "access_token": long_lived["access_token"],
+            "expires_at": time.time() + int(long_lived.get("expires_in", 0)),
+            "user_id": str(short.get("user_id", "")),
+        })
+        await self.fetch_profile()
+        return self.username
+
+    async def fetch_profile(self) -> None:
+        """Store the account username: the carousel footer shows it when brand.handle is empty."""
+        data = await self._call("GET", "me", fields="id,username")
+        stored = self.db.get_token(TOKEN_NAME) or {"access_token": self.token}
+        self.db.set_token(TOKEN_NAME, stored | {"username": data.get("username", ""), "user_id": data.get("id", "")})
+
     async def refresh_token(self) -> None:
         """Long-lived tokens last 60 days and can be refreshed once they are 24 hours old."""
         if not self.token:
@@ -47,9 +106,12 @@ class ThreadsPublisher:
             log.warning("threads token refresh failed: %s %s", resp.status_code, resp.text[:300])
             return
         data = resp.json()
+        stored = self.db.get_token(TOKEN_NAME) or {}
         self.db.set_token(
-            TOKEN_NAME, {"access_token": data["access_token"], "expires_at": time.time() + int(data.get("expires_in", 0))}
+            TOKEN_NAME, stored | {"access_token": data["access_token"], "expires_at": time.time() + int(data.get("expires_in", 0))}
         )
+        if not self.username:
+            await self.fetch_profile()
         log.info("threads token refreshed")
 
     async def _call(self, method: str, path: str, **params) -> dict:

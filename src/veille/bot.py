@@ -135,6 +135,25 @@ class VeilleBot(discord.Client):
             await interaction.response.send_message(f"Drafting for {self._fmt(slot)}...", ephemeral=True)
             self._spawn(self.prepare_next_slot(slot, instruction or ""))
 
+        @self.tree.command(name="connect", description="Connect the Threads or TikTok account (one-time authorization link)")
+        @discord.app_commands.choices(platform=[
+            discord.app_commands.Choice(name="Threads", value="threads"),
+            discord.app_commands.Choice(name="TikTok", value="tiktok"),
+        ])
+        async def connect(interaction: discord.Interaction, platform: discord.app_commands.Choice[str]) -> None:
+            if not await self._authorized(interaction):
+                return
+            try:
+                url = self.pipeline.connect_url(platform.value)
+            except ValueError as exc:
+                await interaction.response.send_message(f"Cannot connect {platform.name}: {exc}", ephemeral=True)
+                return
+            await interaction.response.send_message(
+                f"Open this link logged in as the account that will post, then authorize:\n{url}\n"
+                "A confirmation is posted here once it is done.",
+                ephemeral=True,
+            )
+
         @self.tree.command(name="status", description="Upcoming slots, drafts and connected platforms")
         async def status(interaction: discord.Interaction) -> None:
             if not await self._authorized(interaction):
@@ -151,7 +170,7 @@ class VeilleBot(discord.Client):
 
     async def setup_hook(self) -> None:
         self.add_dynamic_items(ActionButton)
-        self._web_runner = await web.start(self.pipeline)
+        self._web_runner = await web.start(self.pipeline, on_connected=self.notify)
         lead = timedelta(minutes=self.settings.app.schedule.draft_lead_minutes)
         for slot in self.settings.app.schedule.slots:
             t = parse_slot(slot)

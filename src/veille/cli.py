@@ -89,28 +89,21 @@ async def cmd_demo(args: argparse.Namespace) -> None:
         print(f"overflow: {overflow}")
 
 
-async def cmd_tiktok_auth(args: argparse.Namespace) -> None:
-    import httpx
+async def cmd_connect(args: argparse.Namespace) -> None:
+    """Same as /connect on Discord: prints the authorization link; the running server receives the callback."""
+    from .pipeline import Pipeline
 
-    from .db import Database
-    from .publishers.tiktok import TikTokPublisher
-    from .web import STATE_TOKEN
-
-    settings = get_settings()
-    db = Database(settings.db_path)
-    async with httpx.AsyncClient(timeout=30) as client:
-        tiktok = TikTokPublisher(settings, db, client)
+    pipeline = Pipeline(get_settings())
+    try:
         if args.code:
-            await tiktok.exchange_code(args.code)
-            print("TikTok connected.")
+            print(await pipeline.complete_connect(args.platform, None, args.code))
             return
-        url, state = tiktok.authorize_url()
-        db.set_token(STATE_TOKEN, {"state": state})
-        print("Open this URL while logged in to the TikTok account that will post:\n")
-        print(url)
-        print("\nThe running server receives the callback on TIKTOK_REDIRECT_URI and stores the token.")
-        print("Without a running server, copy the `code` parameter from the redirect URL and run:")
-        print("  veille tiktok-auth --code <code>")
+        print("Open this link logged in as the account that will post, then authorize:\n")
+        print(pipeline.connect_url(args.platform))
+        print("\nThe running server stores the token. Without it, copy `code` from the redirect URL and run:")
+        print(f"  veille connect {args.platform} --code <code>")
+    finally:
+        await pipeline.aclose()
 
 
 async def cmd_threads_refresh(_: argparse.Namespace) -> None:
@@ -169,7 +162,8 @@ def main() -> None:
     p = sub.add_parser("demo", help="render the sample carousel")
     p.add_argument("--out", default="out/demo")
 
-    p = sub.add_parser("tiktok-auth", help="connect the TikTok account (OAuth)")
+    p = sub.add_parser("connect", help="connect the Threads or TikTok account (OAuth link)")
+    p.add_argument("platform", choices=["threads", "tiktok"])
     p.add_argument("--code", help="authorization code copied from the redirect URL")
 
     sub.add_parser("threads-refresh", help="refresh the Threads long-lived token")
@@ -191,7 +185,7 @@ def main() -> None:
         "collect": cmd_collect,
         "draft": cmd_draft,
         "demo": cmd_demo,
-        "tiktok-auth": cmd_tiktok_auth,
+        "connect": cmd_connect,
         "threads-refresh": cmd_threads_refresh,
         "doctor": cmd_doctor,
         "eval": cmd_eval,
