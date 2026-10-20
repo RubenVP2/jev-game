@@ -1,145 +1,169 @@
-# Subterfuge Protocol
+# veille — SIGNAL, brief tech quotidien
 
-Jeu multijoueur sur navigateur (4 à 8 joueurs, 3 manches, 8 à 12 min) qui mêle déduction sociale, extraction sous contrainte audio et arbitrage sémantique par un modèle de décision « Système 1 » local : **Laya** (multilingue, par défaut) ou **Kev**.
+Pipeline automatique de veille technologique :
 
-- **Opérateur** : voit la grille 4×4 et l'alignement des mots (cibles, neutres, pièges, fatal), transmet un indice *mot + chiffre* validé par Kev.
-- **Infiltrés** : explorent le complexe en vue de dessus à la lampe torche (cône de 90°), discutent à la voix en audio spatialisé et valident les terminaux par contact.
-- **La Taupe** : infiltré secret qui voit le Patrouilleur IA et pousse l'équipe vers les pièges.
+- **Collecte** sur GitHub Trending, Hacker News et Reddit.
+- **Rédaction** d'un brief technique en anglais par LLM (Google AI Studio, OpenRouter ou OrcaRouter).
+- **Rendu** en carrousel d'images.
+- **Validation** sur Discord.
+- **Publication** sur Threads et TikTok à **8h** et **19h** (heure de Paris).
 
-## Architecture
-
-| Composant | Implémentation |
-| --- | --- |
-| Client | React + Canvas 2D (`client/`), compilé par Vite dans `dist/` |
-| Serveur de jeu | Node.js + Express + `ws` (`server/`), serveur autoritaire à 15 Hz |
-| Audio | WebRTC en maillage (signalisation par le WebSocket) + Web Audio : `PannerNode` linéaire 8 m → 20 m, `BiquadFilterNode` passe-bas à 400 Hz derrière un mur, micro coupé pour les joueurs capturés |
-| Arbitrage | `server/kev.js` : client `kev.bool()`, `kev.choice()`, `kev.score()` au-dessus de `POST /v1/systemone` |
-| Moteur de décision | Service `laya/` (par défaut) : [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya), checkpoint multilingue (mmBERT, 322M paramètres). Alternative : service `kev/` ([jaredpalmer/kev](https://github.com/jaredpalmer/kev)) |
-
-### Moteur de décision : Laya (par défaut) ou Kev
-
-La spec parle de **Kev** ([jaredpalmer/kev](https://huggingface.co/collections/jaredpalmer/kev)). **Laya** ([convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya)) appartient à la même famille. Ce sont des **modèles de décision « Système 1 »**, pas des LLM génératifs :
-
-- **Entrée :** un *état* et des questions typées.
-- **Sortie :** une distribution de probabilités calibrée par question, en une passe, sans génération de texte.
-- **Contrat :** `POST /v1/systemone`. Le jeu est donc indépendant du moteur, seule `KEV_URL` change.
-
-`server/kev.js` garde les noms de la spec :
-
-| Spec | Type | Utilisation dans le jeu |
-| --- | --- | --- |
-| `kev.bool` | `noul` | **A.** `validateOperatorClue` : p(indice interdit) |
-| `kev.choice` | `choice` | **B.** `directMonsterBehavior` : `PATROL_DEFAULT` / `INVESTIGATE_SECTOR` / `HUNT_LOUDEST` / `LOCKDOWN_VENT` |
-| `kev.score` | `score` | **C.** `evaluateMistakeSeverity` : crise de 1 à 5, qui module l'obscurité, la torche et la vitesse du Patrouilleur |
-
-Les consignes et les états sont rédigés **en français et en phrases**. Ces modèles (des encodeurs) lisent mal des nombres bruts ou du JSON : « L'équipe est extrêmement bruyante, elle crie » fonctionne, `ambientVolume: 0.9` beaucoup moins.
-
-**Pourquoi Laya par défaut ?** Voici ce qui a été mesuré sur CPU, avec les mêmes sondes en français :
-
-| | Laya multilingue | kev-0.6b | kev-4b |
-| --- | --- | --- | --- |
-| Langue | 45+ langues, dont le français | anglais | anglais |
-| Taille / RAM | ~650 Mo / ~1,5 Go | ~1,5 Go / ~3 Go | ~9 Go / chargement impossible dans 15 Go |
-| Latence par question (CPU) | **~200–300 ms** | 0,7–1,2 s | GPU requis |
-| B. Patrouilleur (6 situations) | 5 sur 6 cohérentes | choisit toujours la même action | non mesuré |
-| A. Indice | détecte « Chat » face à CHAT (p = 0,96), mais faux positifs sur des indices légaux (jusqu'à 1,00 selon le plateau) | ne discrimine pas | non mesuré |
-
-**Limites de la validation des indices :**
-- Ni Laya ni kev-0.6b ne sont fiables pour valider un indice seuls. La **garde lexicale déterministe** (mot identique, racine commune, mot composé, quasi-homophone) tranche d'abord.
-- Le moteur est **consultatif** par défaut (`KEV_CLUE_THRESHOLD=0`). La probabilité p(interdit) s'affiche côté Opérateur.
-- Le score de gravité (C) reste approximatif : les échelles ordinales sont le point faible connu de Laya.
-
-La règle 7.3 reste imposée : un piège force `HUNT_LOUDEST`.
-
-Si le moteur est injoignable ou dépasse le délai, un **arbitrage de repli déterministe** prend le relais. Le jeu reste jouable sans modèle : laissez `KEV_URL` vide.
-
-## Règles implémentées
-
-- Chaque manche génère 16 terminaux : 6 neutres, 4 cibles, 5 pièges, 1 fatal. Un indice autorise *chiffre + 1* validations.
-- **Cible** : la banque est récupérée. **Neutre** : fin de l'indice. **Piège** : alarme, une banque cible est corrompue, le Patrouilleur passe en `HUNT_LOUDEST` et l'indice prend fin. **Fatal** : victoire immédiate de la Taupe.
-- Quand toutes les cibles restantes sont validées, l'ascenseur s'ouvre pendant **30 s**. Les joueurs le rejoignent et font un vote flash d'exclusion (majorité stricte).
-  - Si la Taupe est éjectée, l'équipe gagne.
-  - Si aucun Infiltré n'est dans l'ascenseur à la fermeture, la Taupe gagne.
-- **La Taupe gagne aussi si** :
-  - le compte à rebours de la manche expire (180 s par défaut) ;
-  - tous les Infiltrés sont capturés ;
-  - l'objectif de 75 % devient inatteignable.
-- **L'équipe gagne** après 3 manches avec au moins **9 banques sur 12** (75 %).
-- Les joueurs capturés sont confinés jusqu'à la manche suivante. Les joueurs éjectés le restent jusqu'à la fin de la partie.
-
-## Contrôles
-
-- **Ordinateur** : ZQSD, WASD ou flèches pour se déplacer, Espace (ou E) pour valider un terminal.
-- **Mobile ou tablette** : joystick virtuel dynamique sur la moitié gauche de l'écran, bouton d'action ⚡ à droite.
-
-## Développement
-
-```bash
-npm install
-npm run dev:server   # serveur de jeu sur :3000
-npm run dev:client   # Vite sur :5173 (proxy /ws et /config vers :3000)
-npm test             # tests de l'arbitre et de la carte
+```
+GitHub Trending ─┐                 fusion des doublons     dossier : README / article
+Hacker News     ─┼─► SQLite ─────► score + tri LLM    ───► + meilleurs commentaires ──► rédaction LLM
+Reddit          ─┘                 (anti-répétition)                                   (contrôles éditoriaux)
+                                                                                            │
+           Threads (carrousel + réponse avec source) ◄── créneau 8h / 19h ◄── Discord ◄── slides JPEG
+           TikTok (carrousel photo)                                         [Approve] [Publish now] [Edit]
+                                                                            [Regenerate] [Another topic] [Reject]
 ```
 
-Pour tester seul, ouvrez plusieurs onglets : chaque onglet est un joueur distinct. `MIN_PLAYERS=3` est le minimum accepté.
+Le cadrage complet est dans [`docs/CADRAGE.md`](docs/CADRAGE.md).
 
-## Moteur de décision en local (hors Docker)
+## Ligne éditoriale
+
+L'objectif est de ne pas ressembler aux posts tech habituels :
+
+- **Fond** : le mécanisme (comment ça marche), le chiffre qui compte, le compromis, et un verdict « use it if / skip it if ».
+- **Ton** : sérieux et dense, sans emoji, sans point d'exclamation, sans question rhétorique, sans hashtag sur Threads. Une liste de formules bannies (« game-changer », « dive in »…) est vérifiée automatiquement.
+- **Faits** : uniquement ceux du dossier (README, article, métadonnées). Les commentaires HN et Reddit servent aux critiques et sont attribués comme des opinions.
+- **Visuel** : un carrousel façon fiche technique (« BRIEF 0042 »), avec des slides typées : couverture, points clés, mécanisme, code, chiffre mesuré, comparatif, verdict.
+
+Si la sortie du LLM viole une règle (longueur, mot banni, emoji, nombre de slides), les erreurs lui sont renvoyées pour correction, jusqu'à deux fois.
+
+## Démarrage rapide (local)
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install --index-url https://download.pytorch.org/whl/cpu torch
-pip install laya==0.3.5 fastapi uvicorn
-python laya/server.py                       # /v1/systemone sur :8008, télécharge les poids au 1er lancement
-KEV_URL=http://localhost:8008 npm run dev:server
+pip install -e ".[dev]"
+playwright install chromium
+cp .env.example .env            # au minimum une clé LLM
+
+veille demo --out out/demo      # rend le carrousel d'exemple, sans aucune clé
+veille collect                  # collecte + classement (le tri éditorial appelle le LLM)
+veille draft --out out/draft    # brouillon complet en local : texte + slides, sans Discord ni publication
+pytest                          # tests
 ```
 
-Pour utiliser Kev à la place : `kev/serve.py` lance `kev.serve` du dépôt [jaredpalmer/kev](https://github.com/jaredpalmer/kev) en écoutant sur `0.0.0.0` (voir `kev/Dockerfile`).
+## Configuration
 
-## Déploiement Docker
+- **`.env`** : secrets (clés API, tokens). Voir `.env.example`.
+- **`config.yaml`** : tout le reste (sources, subreddits, langages GitHub, seuils, créneaux, marque et couleur, modèles).
+
+### LLM : trois fournisseurs, bascule automatique
+
+Les trois fournisseurs exposent une API compatible OpenAI, donc un seul client sert pour les trois. Chaque tâche a une chaîne de modèles : en cas d'erreur, de quota dépassé ou de réponse vide, la suivante est essayée. Les entrées sans clé API sont ignorées.
+
+```yaml
+llm:
+  tasks:
+    triage:   # tri éditorial des candidats, modèle rapide
+      - {provider: google, model: gemini-flash-latest}
+      - {provider: openrouter, model: google/gemini-3.8-flash}
+      - {provider: orcarouter, model: orcarouter/auto}
+    write:    # rédaction, meilleur modèle
+      - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
+      - {provider: google, model: gemini-pro-latest}
+      - {provider: orcarouter, model: orcarouter/auto}
+```
+
+| Fournisseur | Variable | Clé |
+|---|---|---|
+| Google AI Studio | `GOOGLE_AI_API_KEY` | https://aistudio.google.com/apikey |
+| OpenRouter | `OPENROUTER_API_KEY` | https://openrouter.ai/keys |
+| OrcaRouter | `ORCAROUTER_API_KEY` | https://orcarouter.ai |
+
+Les identifiants de modèles évoluent vite. Vérifie-les dans le catalogue de chaque fournisseur et ajuste `config.yaml`.
+
+## Mise en place des services
+
+### 1. Discord (validation)
+
+1. Crée une application sur https://discord.com/developers/applications, puis un bot. Copie son token dans `DISCORD_BOT_TOKEN`.
+2. Invite-le sur ton serveur avec les permissions *Send Messages*, *Attach Files*, *Embed Links* et *Read Message History* : OAuth2 → URL Generator, scope `bot`.
+3. Active le mode développeur de Discord, puis copie l'ID du salon (`DISCORD_CHANNEL_ID`) et ton ID utilisateur (`DISCORD_ALLOWED_USER_IDS`). Seuls ces utilisateurs peuvent appuyer sur les boutons.
+
+Chaque brouillon arrive 2 heures avant son créneau, avec le texte, les slides et ces boutons :
+
+| Bouton | Effet |
+|---|---|
+| Approve for slot | Publication automatique à 8h ou 19h. Si le créneau est déjà passé, publication dans la minute. |
+| Publish now | Publication immédiate. |
+| Edit text | Modifier le post et la réponse Threads, avec contrôle des 500 caractères. |
+| Regenerate | Nouvelle version, avec une consigne optionnelle (« focus on the benchmark »…). |
+| Another topic | Rejette le sujet et rédige le suivant pour le même créneau. |
+| Reject | Rejette le sujet, qui ne sera plus proposé. |
+| Retry publish | Après un échec, relance uniquement les plateformes qui ont échoué. |
+
+### 2. Serveur public pour les médias
+
+Threads et TikTok **téléchargent** les slides depuis une URL publique en HTTPS. `docker-compose.yml` inclut Caddy, qui obtient le certificat HTTPS automatiquement :
+
+- `DOMAIN=veille.ton-domaine.com` : un enregistrement DNS A doit pointer vers le VPS.
+- `PUBLIC_BASE_URL=https://veille.ton-domaine.com`
+
+Les slides sont servies sous `/media/<id>-<jeton aléatoire>/slide-01.jpg`.
+
+### 3. Threads
+
+1. Crée une app Meta avec le cas d'usage « Access the Threads API » : https://developers.facebook.com/apps
+2. Ajoute ton compte Threads comme testeur, puis génère un **token longue durée** (60 jours) avec les permissions `threads_basic` et `threads_content_publish`. Mets-le dans `THREADS_ACCESS_TOKEN`.
+3. Le token est rafraîchi automatiquement chaque nuit. Tu peux aussi le rafraîchir à la main avec `veille threads-refresh`.
+
+La publication suit cet ordre :
+
+1. Le post principal, avec le carrousel des slides.
+2. Une réponse contenant le détail technique supplémentaire et le lien vers la source. Le lien est hors du post principal pour ne pas pénaliser sa portée.
+
+### 4. TikTok
+
+1. Crée une app sur https://developers.tiktok.com avec les produits *Login Kit* et *Content Posting API*, et les scopes `user.info.basic`, `video.upload` et `video.publish`.
+2. Configure le redirect URI `https://veille.ton-domaine.com/tiktok/callback`, puis remplis `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` et `TIKTOK_REDIRECT_URI`.
+3. **Vérifie ton domaine** : TikTok n'accepte les photos que depuis un domaine vérifié. Le plus simple est la vérification par enregistrement DNS TXT sur `veille.ton-domaine.com`. Si tu choisis plutôt un fichier `.txt` servi à la racine, dépose-le dans `data/public/`.
+4. Le serveur doit tourner. Lance `docker compose exec app veille tiktok-auth`, ouvre l'URL affichée et autorise l'accès : le token est enregistré automatiquement.
+
+Deux modes de publication, réglés dans `config.yaml` → `publish.tiktok.mode` :
+
+- `MEDIA_UPLOAD` (par défaut) : le carrousel arrive dans ta **boîte de réception TikTok**. Tu ajoutes une musique et tu publies depuis l'app, ce qui est de toute façon conseillé pour la portée.
+- `DIRECT_POST` : publication directe. **Tant que ton app TikTok n'a pas passé l'audit, ces posts restent privés** (limitation de TikTok).
+
+### 5. Reddit
+
+Crée une app de type *script* sur https://www.reddit.com/prefs/apps et remplis `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` et `REDDIT_USER_AGENT`. Sans identifiants, les endpoints JSON publics sont utilisés, mais Reddit les bloque souvent.
+
+## Déploiement (VPS)
 
 ```bash
-# Application + Laya, avec le port 3000 publié en local
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
-
-# Variante Kev (anglais, plus lourd)
-docker compose -f docker-compose.yml -f docker-compose.kev.yml -f docker-compose.local.yml up -d --build
+git clone <repo> veille && cd veille
+cp .env.example .env && nano .env
+mkdir -p data && sudo chown 1000:1000 data     # le conteneur tourne en utilisateur non-root
+docker compose up -d --build
+docker compose logs -f app
 ```
 
-- Au premier démarrage, `laya` télécharge le checkpoint multilingue (environ 650 Mo) dans le volume `laya-hf`. Tant qu'il n'est pas prêt, le jeu utilise l'arbitrage de repli.
-- **GPU NVIDIA (environ 35 ms par question) :**
-  1. Définissez `LAYA_TORCH_INDEX=https://download.pytorch.org/whl/cu128`.
-  2. Décommentez le bloc `deploy` du service `laya`.
-- **Kev :** kev-4b demande un GPU avec environ 10 Go de VRAM (ou au moins 32 Go de RAM). `KEV_RUN=jaredpalmer/kev-0.6b` tient dans environ 3 Go.
-- **Limite de la variante Kev :** le fichier `docker-compose.kev.yml` redirige le jeu vers Kev, mais Docker Compose ne permet pas de retirer un service par surcharge. Le service `laya` démarre donc quand même, mais il n'est pas utilisé.
+Un seul processus fait tourner trois choses :
 
-## Déploiement Dokploy
+- **le bot Discord** ;
+- **l'ordonnanceur** : brouillon à 6h et à 17h, vérification chaque minute des brouillons approuvés à publier, rafraîchissement du token Threads chaque nuit ;
+- **le serveur de médias**.
 
-1. **Create Project**, puis **Create Service**, puis **Compose**. Choisissez ce dépôt Git, branche `main`, fichier `docker-compose.yml`.
-2. Si besoin, ajoutez dans l'onglet **Environment** les variables de `.env.example` (par exemple `LAYA_TORCH_INDEX` pour un GPU).
-3. Dans l'onglet **Domains**, ajoutez votre domaine sur le service **`app`**, port **3000**, avec **HTTPS activé** (Let's Encrypt). Le micro (`getUserMedia`) n'est disponible qu'en HTTPS.
-4. Cliquez sur **Deploy**. Au premier lancement, `laya` télécharge ses poids depuis Hugging Face (environ 650 Mo). Prévoyez environ 2 Go de RAM pour ce service.
+Au redémarrage, si un créneau est imminent et n'a pas encore de brouillon, il en génère un.
 
-Le WebSocket (`/ws`) passe par Traefik sans configuration supplémentaire. Pour une application Dokploy de type *Dockerfile* (sans moteur de décision), définissez le port 3000 et laissez `KEV_URL` vide, ou pointez-la vers un serveur `/v1/systemone` existant.
+Les données (SQLite, slides, tokens) sont dans `./data`. Sauvegarde ce dossier.
 
-### Variables d'environnement
+## Structure
 
-| Variable | Défaut | Rôle |
-| --- | --- | --- |
-| `PORT` | `3000` | Port HTTP/WebSocket |
-| `KEV_URL` | `http://laya:8008` (compose) | URL du moteur de décision (`/v1/systemone`). Vide = arbitrage de repli uniquement |
-| `LAYA_SUBFOLDER` | `multilingual` | Checkpoint Laya : `multilingual`, ou vide pour l'anglais |
-| `LAYA_TORCH_INDEX` | index CPU de PyTorch | Index PyTorch au build de `laya` (`…/whl/cu128` pour NVIDIA) |
-| `KEV_RUN`, `KEV_TORCH_INDEX` | `jaredpalmer/kev-4b`, index CPU | Variante Kev (`docker-compose.kev.yml`) |
-| `KEV_API_KEY` | *(vide)* | Jeton Bearer exigé par le moteur s'il est défini |
-| `KEV_TIMEOUT_MS` | `1500` | Délai max des appels `choice` et `score` |
-| `KEV_CLUE_TIMEOUT_MS` | `1000` | Délai max de validation d'un indice |
-| `KEV_CLUE_THRESHOLD` | `0` | p(indice interdit) au-delà de laquelle le moteur rejette un indice. 0 = consultatif |
-| `MIN_PLAYERS` | `4` | Joueurs minimum pour lancer (≥ 3) |
-| `ROUND_SECONDS` | `180` | Compte à rebours d'une manche |
-| `EXTRACTION_SECONDS` | `30` | Fenêtre d'extraction et de vote |
-| `DIRECTOR_INTERVAL` | `7` | Période (s) du directeur d'IA |
-| `MONSTER_SPEED_SCALE` | `1` | Multiplicateur de vitesse du Patrouilleur (équilibrage) |
-| `STUN_URLS` | `stun:stun.l.google.com:19302` | Serveurs STUN (séparés par des virgules) |
-| `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | *(vide)* | Serveur TURN pour les réseaux mobiles ou NAT stricts |
-
-> La voix est en maillage pair-à-pair. Au-delà de 6 joueurs, ou sur des réseaux 4G/5G, un serveur TURN (par exemple coturn) améliore nettement la fiabilité.
+```
+src/veille/
+  sources/          github.py · hackernews.py · reddit.py · dossier de recherche (__init__.py)
+  ranking.py        fusion des doublons, score heuristique, anti-répétition, tri éditorial LLM
+  llm.py            client compatible OpenAI multi-fournisseurs + bascule + JSON validé et réparé
+  prompts.py        ligne éditoriale (tri + rédaction)
+  writer.py         rédaction + contrôles éditoriaux
+  carousel/         template HTML des slides + rendu Playwright en JPEG
+  publishers/       threads.py · tiktok.py
+  pipeline.py       orchestration, créneaux, publication idempotente
+  bot.py            bot Discord + ordonnanceur
+  web.py            serveur de médias + callback OAuth TikTok
+  cli.py            commandes `veille …`
+```

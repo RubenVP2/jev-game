@@ -1,0 +1,296 @@
+"""Discord bot: draft review (approve, publish now, edit, regenerate, reject) and the scheduler."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from datetime import UTC, datetime, timedelta
+
+import discord
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from pydantic import ValidationError
+
+from . import web
+from .models import DraftStatus, threads_length
+from .pipeline import NoCandidate, Pipeline, parse_slot
+
+log = logging.getLogger(__name__)
+
+ACTIONS = {
+    "approve": ("Approve for slot", discord.ButtonStyle.success, 0),
+    "now": ("Publish now", discord.ButtonStyle.primary, 0),
+    "edit": ("Edit text", discord.ButtonStyle.secondary, 0),
+    "regen": ("Regenerate", discord.ButtonStyle.secondary, 0),
+    "another": ("Another topic", discord.ButtonStyle.secondary, 1),
+    "reject": ("Reject", discord.ButtonStyle.danger, 1),
+    "retry": ("Retry publish", discord.ButtonStyle.primary, 0),
+    "unapprove": ("Cancel approval", discord.ButtonStyle.secondary, 0),
+}
+
+STATUS_ACTIONS = {
+    DraftStatus.PENDING: ["approve", "now", "edit", "regen", "another", "reject"],
+    DraftStatus.APPROVED: ["now", "unapprove", "reject"],
+    DraftStatus.FAILED: ["retry", "reject"],
+}
+
+
+class ActionButton(discord.ui.DynamicItem[discord.ui.Button], template=r"veille:(?P<action>[a-z]+):(?P<id>\d+)"):
+    """Persistent button: keeps working after a bot restart because the draft id lives in custom_id."""
+
+    def __init__(self, action: str, draft_id: int):
+        label, style, row = ACTIONS[action]
+        super().__init__(discord.ui.Button(label=label, style=style, row=row, custom_id=f"veille:{action}:{draft_id}"))
+        self.action = action
+        self.draft_id = draft_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match: re.Match[str]):
+        return cls(match["action"], int(match["id"]))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.client.handle_action(interaction, self.action, self.draft_id)  # type: ignore[attr-defined]
+
+
+def draft_view(draft_id: int, status: DraftStatus) -> discord.ui.View | None:
+    actions = STATUS_ACTIONS.get(status)
+    if not actions:
+        return None
+    view = discord.ui.View(timeout=None)
+    for action in actions:
+        view.add_item(ActionButton(action, draft_id))
+    return view
+
+
+class EditModal(discord.ui.Modal, title="Edit the Threads copy"):
+    def __init__(self, bot: VeilleBot, draft: dict):
+        super().__init__(timeout=900)
+        self.bot = bot
+        self.draft_id = draft["id"]
+        threads = draft["content"]["threads"]
+        self.post = discord.ui.TextInput(label="Post (max 500)", style=discord.TextStyle.paragraph, default=threads["post"], max_length=500)
+        self.reply = discord.ui.TextInput(label="Reply with source (max 500)", style=discord.TextStyle.paragraph, default=threads["reply"], max_length=500, required=False)
+        self.add_item(self.post)
+        self.add_item(self.reply)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            self.bot.pipeline.edit_threads(self.draft_id, self.post.value, self.reply.value)
+        except ValidationError as exc:
+            await interaction.response.send_message(f"Not saved: {exc.errors()[0]['msg']}", ephemeral=True)
+            return
+        await interaction.response.defer()
+        await self.bot.refresh_message(self.draft_id)
+
+
+class RegenerateModal(discord.ui.Modal, title="Regenerate this draft"):
+    instruction = discord.ui.TextInput(
+        label="Instruction (optional)",
+        style=discord.TextStyle.paragraph,
+        placeholder="e.g. focus on the benchmark methodology, shorter cover, add a code slide",
+        required=False,
+        max_length=1000,
+    )
+
+    def __init__(self, bot: VeilleBot, draft_id: int):
+        super().__init__(timeout=900)
+        self.bot = bot
+        self.draft_id = draft_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message("Regenerating...", ephemeral=True)
+        await self.bot.run_regenerate(self.draft_id, self.instruction.value)
+
+
+class VeilleBot(discord.Client):
+    def __init__(self, pipeline: Pipeline):
+        super().__init__(intents=discord.Intents.default())
+        self.pipeline = pipeline
+        self.settings = pipeline.settings
+        self.scheduler = AsyncIOScheduler(timezone=pipeline.tz)
+        self.draft_lock = asyncio.Lock()
+        self._web_runner = None
+
+    # --- lifecycle -----------------------------------------------------------
+
+    async def setup_hook(self) -> None:
+        self.add_dynamic_items(ActionButton)
+        self._web_runner = await web.start(self.pipeline)
+        lead = timedelta(minutes=self.settings.app.schedule.draft_lead_minutes)
+        for slot in self.settings.app.schedule.slots:
+            t = parse_slot(slot)
+            fire = datetime(2000, 1, 1, t.hour, t.minute) - lead
+            self.scheduler.add_job(self.prepare_next_slot, CronTrigger(hour=fire.hour, minute=fire.minute), name=f"draft {slot}")
+        self.scheduler.add_job(self.publish_due, IntervalTrigger(minutes=1), name="publish due drafts")
+        self.scheduler.add_job(self.pipeline.threads.refresh_token, CronTrigger(hour=4, minute=17), name="threads token")
+        self.scheduler.start()
+
+    async def on_ready(self) -> None:
+        log.info("discord bot ready as %s", self.user)
+        # Catch up after a restart: the draft for an imminent slot may not exist yet.
+        slot = self.pipeline.next_slot()
+        lead = timedelta(minutes=self.settings.app.schedule.draft_lead_minutes)
+        if slot - datetime.now(UTC) <= lead and self.pipeline.db.active_draft_for_slot(slot) is None:
+            asyncio.create_task(self.prepare_next_slot())
+
+    async def close(self) -> None:
+        self.scheduler.shutdown(wait=False)
+        if self._web_runner:
+            await self._web_runner.cleanup()
+        await self.pipeline.aclose()
+        await super().close()
+
+    async def channel(self) -> discord.abc.Messageable:
+        channel_id = self.settings.secrets.discord_channel_id
+        return self.get_channel(channel_id) or await self.fetch_channel(channel_id)
+
+    async def notify(self, text: str) -> None:
+        await (await self.channel()).send(text[:2000])
+
+    # --- jobs ----------------------------------------------------------------
+
+    async def prepare_next_slot(self, slot: datetime | None = None) -> None:
+        slot = slot or self.pipeline.next_slot()
+        async with self.draft_lock:
+            if self.pipeline.db.active_draft_for_slot(slot) is not None:
+                return
+            try:
+                draft_id = await self.pipeline.create_draft(slot)
+            except NoCandidate as exc:
+                await self.notify(f"No draft for {self._fmt(slot)}: {exc}")
+                return
+            except Exception as exc:  # noqa: BLE001 - surfaced on Discord instead of dying silently
+                log.exception("draft generation failed")
+                await self.notify(f"Draft generation failed for {self._fmt(slot)}: `{exc}`")
+                return
+        await self.post_draft(draft_id)
+
+    async def publish_due(self) -> None:
+        for draft_id, outcome in await self.pipeline.publish_due():
+            await self.refresh_message(draft_id)
+            await self.notify(self._publish_report(draft_id, outcome))
+
+    # --- Discord rendering ---------------------------------------------------
+
+    def _fmt(self, dt: datetime) -> str:
+        return dt.astimezone(self.pipeline.tz).strftime("%a %d %b %H:%M")
+
+    def _publish_report(self, draft_id: int, outcome: dict) -> str:
+        lines = [f"**Draft #{draft_id}**: " + ("published" if not outcome["errors"] else "publication failed")]
+        threads = outcome["results"].get("threads")
+        if threads:
+            lines.append(f"Threads: {threads.get('permalink') or threads.get('post_id')}")
+        tiktok = outcome["results"].get("tiktok")
+        if tiktok:
+            where = "sent to your TikTok inbox, finish it in the app" if tiktok.get("mode") == "MEDIA_UPLOAD" else tiktok.get("status")
+            lines.append(f"TikTok: {where}")
+        lines += [f"Error: {e}" for e in outcome["errors"]]
+        return "\n".join(lines)
+
+    def _summary(self, draft: dict) -> tuple[str, discord.Embed]:
+        content = draft["content"]
+        item = self.pipeline.db.get_item(draft["item_id"])
+        header = f"**Draft #{draft['id']}** · slot {self._fmt(draft['slot_at'])} · status **{draft['status'].value}**"
+        if draft.get("error"):
+            header += f"\nError: {draft['error'][:500]}"
+        embed = discord.Embed(title=draft["title"][:256], url=item.discussion_url if item else None, description=f"*{content['angle']}*"[:4096])
+        post, reply = content["threads"]["post"], content["threads"]["reply"]
+        embed.add_field(name=f"Threads post ({threads_length(post)}/500)", value=post[:1024], inline=False)
+        embed.add_field(name=f"Threads reply ({threads_length(reply)}/500)", value=reply[:1024] or "-", inline=False)
+        embed.add_field(name="TikTok title", value=content["tiktok"]["title"][:1024], inline=False)
+        embed.add_field(name="TikTok description", value=content["tiktok"]["description"][:1024], inline=False)
+        if item:
+            embed.set_footer(text=f"{item.source} · score {item.score} · {item.comments} comments · {item.url}"[:2048])
+        return header, embed
+
+    async def post_draft(self, draft_id: int) -> None:
+        draft = self.pipeline.db.get_draft(draft_id)
+        header, embed = self._summary(draft)
+        files = [discord.File(p) for p in self.pipeline.media_paths(draft)[:10]]
+        message = await (await self.channel()).send(content=header, embed=embed, files=files, view=draft_view(draft_id, draft["status"]))
+        self.pipeline.db.update_draft(draft_id, discord_message_id=message.id)
+
+    async def refresh_message(self, draft_id: int) -> None:
+        draft = self.pipeline.db.get_draft(draft_id)
+        if not draft or not draft["discord_message_id"]:
+            return
+        header, embed = self._summary(draft)
+        try:
+            message = await (await self.channel()).fetch_message(draft["discord_message_id"])
+            await message.edit(content=header, embed=embed, view=draft_view(draft_id, draft["status"]))
+        except discord.HTTPException as exc:
+            log.warning("cannot update message for draft %s: %s", draft_id, exc)
+
+    # --- button handling -----------------------------------------------------
+
+    async def handle_action(self, interaction: discord.Interaction, action: str, draft_id: int) -> None:
+        if interaction.user.id not in self.settings.secrets.allowed_user_ids:
+            await interaction.response.send_message("You are not allowed to review drafts (DISCORD_ALLOWED_USER_IDS).", ephemeral=True)
+            return
+        db = self.pipeline.db
+        draft = db.get_draft(draft_id)
+        if draft is None:
+            await interaction.response.send_message("Draft not found.", ephemeral=True)
+            return
+
+        if action == "edit":
+            await interaction.response.send_modal(EditModal(self, draft))
+        elif action == "regen":
+            await interaction.response.send_modal(RegenerateModal(self, draft_id))
+        elif action == "approve":
+            ok = db.claim_draft(draft_id, DraftStatus.PENDING, DraftStatus.APPROVED)
+            await self._ack(interaction, draft_id, f"Approved, publishing {self._fmt(draft['slot_at'])}." if ok else "Draft is no longer pending.")
+        elif action == "unapprove":
+            ok = db.claim_draft(draft_id, DraftStatus.APPROVED, DraftStatus.PENDING)
+            await self._ack(interaction, draft_id, "Back to pending." if ok else "Draft is no longer approved.")
+        elif action in {"now", "retry"}:
+            await interaction.response.send_message("Publishing...", ephemeral=True)
+            expected = {"now": draft["status"], "retry": DraftStatus.FAILED}[action]
+            if expected not in (DraftStatus.PENDING, DraftStatus.APPROVED, DraftStatus.FAILED):
+                return
+            try:
+                outcome = await self.pipeline.publish(draft_id, expected=expected)
+            except RuntimeError as exc:
+                await interaction.followup.send(str(exc), ephemeral=True)
+                return
+            await self.refresh_message(draft_id)
+            await self.notify(self._publish_report(draft_id, outcome))
+        elif action == "reject":
+            db.update_draft(draft_id, status=DraftStatus.REJECTED)
+            await self._ack(interaction, draft_id, "Rejected.")
+        elif action == "another":
+            db.update_draft(draft_id, status=DraftStatus.REJECTED)
+            await self._ack(interaction, draft_id, "Rejected. Drafting another topic for this slot...")
+            await self.prepare_next_slot(draft["slot_at"])
+
+    async def _ack(self, interaction: discord.Interaction, draft_id: int, text: str) -> None:
+        await interaction.response.send_message(text, ephemeral=True)
+        await self.refresh_message(draft_id)
+
+    async def run_regenerate(self, draft_id: int, instruction: str) -> None:
+        old = self.pipeline.db.get_draft(draft_id)
+        try:
+            await self.pipeline.regenerate(draft_id, instruction)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("regeneration failed")
+            await self.notify(f"Regeneration of draft #{draft_id} failed: `{exc}`")
+            return
+        # New slides mean new attachments: post a fresh message and retire the old one.
+        if old and old["discord_message_id"]:
+            try:
+                message = await (await self.channel()).fetch_message(old["discord_message_id"])
+                await message.edit(content=f"~~Draft #{draft_id}~~ regenerated below.", embed=None, attachments=[], view=None)
+            except discord.HTTPException:
+                pass
+        await self.post_draft(draft_id)
+
+
+def run(pipeline: Pipeline) -> None:
+    token = pipeline.settings.secrets.discord_bot_token
+    if not token or not pipeline.settings.secrets.discord_channel_id:
+        raise SystemExit("DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID are required")
+    if not pipeline.settings.secrets.allowed_user_ids:
+        raise SystemExit("DISCORD_ALLOWED_USER_IDS is required: only these users can approve drafts")
+    VeilleBot(pipeline).run(token, log_handler=None)

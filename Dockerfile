@@ -1,22 +1,22 @@
-# ── Build du client React/Vite
-FROM node:22-alpine AS build
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY vite.config.js ./
-COPY client ./client
-RUN npm run build
+FROM python:3.12-slim
 
-# ── Image d'exécution : serveur Node (HTTP + WebSocket) servant le client compilé
-FROM node:22-alpine
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-COPY server ./server
-COPY --from=build /app/dist ./dist
-USER node
-EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
-  CMD wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1
-CMD ["node", "server/index.js"]
+
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install . \
+    && playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY config.yaml ./
+
+RUN useradd --create-home --uid 1000 veille && mkdir -p /app/data && chown -R veille /app/data
+USER veille
+
+EXPOSE 8080
+HEALTHCHECK --interval=60s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"
+CMD ["veille", "run"]
