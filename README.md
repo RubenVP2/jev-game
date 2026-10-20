@@ -58,7 +58,7 @@ Pas de token à copier-coller :
 
 Le pseudo affiché sur les slides est celui du compte Threads connecté, sauf si tu en fixes un dans `brand.handle`.
 
-**Identifiants de modèles** : ceux de `config.yaml` ont été vérifiés dans le catalogue OpenRouter. Si un fournisseur retire ou renomme un modèle, le pipeline prend automatiquement le plus récent de la même famille dans son catalogue (`claude-sonnet-*`, `gemini-*-pro`…) et `veille doctor` signale le remplacement.
+**Identifiants de modèles** : ceux d'OpenRouter et d'OrcaRouter dans `config.yaml` ont été vérifiés dans leurs catalogues en ligne. Ceux de Google AI Studio (`gemini-3.8-flash`, `gemini-pro-latest`) sont ceux que les deux routeurs reprennent de Google. Si un fournisseur retire ou renomme un modèle, le pipeline prend automatiquement le plus récent de la même famille dans son catalogue (`claude-sonnet-*`, `gemini-*-pro`…) et `veille doctor` signale le remplacement.
 
 ## Le harnais de cohérence
 
