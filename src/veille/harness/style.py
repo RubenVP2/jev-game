@@ -45,7 +45,7 @@ SLIDE_FIELD_LIMITS = {
     "kicker": 28, "heading": 60, "body": 140, "value": 8, "label": 60, "left_title": 18, "right_title": 18,
 }
 SLIDE_ITEM_LIMIT = 95
-CODE_LINES, CODE_COLS = 12, 56
+CODE_LINES, CODE_COLS = 12, 64  # beyond ~48 columns the renderer shrinks the code font
 # (field, min, max) item counts per slide kind, mirroring SLIDE_SPECS.
 ITEM_COUNTS = {
     "points": [("bullets", 2, 4)],
@@ -68,7 +68,7 @@ SLIDE_SPECS = [
     '{"kind": "cover", "kicker": "<= 28 chars: SOURCE / TOPIC, e.g. \'GITHUB / RUST\'", "heading": "<= 60 chars, the claim", "body": "<= 110 chars, what it is in one line"}',
     '{"kind": "points", "heading": "<= 40 chars", "bullets": ["2-4 bullets, each <= 90 chars"]}',
     '{"kind": "mechanism", "heading": "<= 40 chars, e.g. \'How it works\'", "bullets": ["3-5 ordered steps, each <= 80 chars"]}',
-    '{"kind": "code", "heading": "<= 40 chars", "code": "<= 12 lines, <= 56 chars per line, copied from the dossier", "body": "<= 90 chars caption"}',
+    '{"kind": "code", "heading": "<= 40 chars", "code": "<= 12 lines, <= 56 chars per line, copied from the dossier (re-wrap longer lines)", "body": "<= 90 chars caption"}',
     '{"kind": "stat", "value": "<= 8 chars, e.g. \'3.2x\' or \'-41%\'", "label": "<= 60 chars, what was measured", "body": "<= 120 chars, conditions and caveat"}',
     '{"kind": "compare", "heading": "<= 40 chars", "left_title": "<= 18 chars", "left": ["2-4 items <= 40 chars"], "right_title": "<= 18 chars", "right": ["2-4 items <= 40 chars"]}',
     '{"kind": "verdict", "heading": "<= 40 chars", "body": "<= 140 chars, the bottom line", "left": ["1-2 \'use it if\' items <= 60 chars"], "right": ["1-2 \'skip it if\' items <= 60 chars"]}',

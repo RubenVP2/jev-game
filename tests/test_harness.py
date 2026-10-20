@@ -1,8 +1,9 @@
 import json
+from pathlib import Path
 
 import pytest
 
-from conftest import FakeClient
+from conftest import FakeClient, requires_chromium
 from veille.harness import Harness, Verdict, golden_exemplars
 from veille.harness.evaluate import SAMPLE_DOSSIER, item_from_dossier
 from veille.harness.facts import FactSheet, clean_fact_sheet, numbers_in, ungrounded_figures
@@ -230,3 +231,27 @@ async def test_hard_problems_still_fail_the_model(settings):
     harness.llm._clients["second"] = FakeClient([json.dumps(post(banned))] * 4)
     with pytest.raises(LLMError):
         await harness.compose(ITEM, DOSSIER, approved=[], recent_hooks=[])
+
+
+REALISTIC = Path(__file__).parent / "fixtures" / "realistic_post.json"
+
+
+def test_a_realistic_model_output_passes_the_harness(settings):
+    """A post written by a capable model, following the production prompt, must pass as is.
+
+    Guards against rules that are stricter than what a real writer can satisfy (e.g. verbatim
+    README code longer than the code width limit).
+    """
+    content = PostContent.model_validate(json.loads(REALISTIC.read_text()))
+    assert Harness(settings, LLM(settings)).problems(content, ITEM, DOSSIER) == []
+
+
+@requires_chromium
+async def test_a_realistic_model_output_fits_the_slides(settings, tmp_path):
+    from datetime import datetime
+
+    from veille.carousel.render import render_slides
+
+    content = normalize(PostContent.model_validate(json.loads(REALISTIC.read_text())), ITEM.url, ITEM.discussion_url, [])
+    result = await render_slides(settings, content, tmp_path, 1, datetime(2026, 1, 1), ITEM)
+    assert result.overflows == []

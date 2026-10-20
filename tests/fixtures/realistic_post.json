@@ -1,0 +1,19 @@
+{
+  "angle": "Ledgerline cuts write amplification by tracking garbage per key, and pays for it with an in-memory index and no range scans.",
+  "threads": {
+    "post": "Ledgerline compacts one key at a time, so a hot key never forces a rewrite of cold segments.\n\nEvery write appends to a segment; an in-memory index points each key to its latest record.\nOn the README benchmark: write amplification 1.3 vs 7.5 for RocksDB, p99 writes at 0.4 ms.\nThe cost is RAM: about 48 bytes per key, and no efficient range scans.",
+    "reply": "The baseline is RocksDB with default options. HN commenters point out that tuned universal compaction would close part of the gap, and that the design is close to Bitcask with finer garbage accounting.\n\nSource: https://github.com/example/ledgerline"
+  },
+  "tiktok": {
+    "title": "A log store that compacts one key at a time",
+    "description": "Ledgerline appends every write and tracks garbage per key instead of per segment. Write amplification drops to 1.3 on its benchmark, but the whole index must fit in RAM. #databases #rust #storage"
+  },
+  "slides": [
+    {"kind": "cover", "kicker": "HACKER NEWS / STORAGE", "heading": "Compaction per key, not per segment", "body": "Ledgerline is an embedded append-only log store in Rust."},
+    {"kind": "mechanism", "heading": "How it works", "bullets": ["Each write appends to the active segment file", "An in-memory index maps a key to its latest offset", "Superseded records are counted per key", "Past compact_after, only that key's live record is rewritten"]},
+    {"kind": "stat", "value": "1.3", "label": "write amplification, vs 7.5 for RocksDB", "body": "README benchmark: one NVMe SSD, 16 threads, 1 KiB values, Zipfian keys. RocksDB ran with default options."},
+    {"kind": "code", "heading": "The API", "code": "let store = Ledgerline::open(\"data/\", Options::default())?;\nstore.put(b\"user:42\", b\"{\\\"plan\\\":\\\"pro\\\"}\")?;\nlet value = store.get(b\"user:42\")?;\nstore.flush()?;", "body": "Plain key-value calls. No transactions across keys."},
+    {"kind": "compare", "heading": "What it costs", "left_title": "Gains", "left": ["1.9 million writes/s on the benchmark", "p99 write latency of 0.4 ms", "Hot keys compact alone"], "right_title": "Costs", "right": ["About 48 bytes of RAM per key", "No efficient range scans", "No cross-key transactions"]},
+    {"kind": "verdict", "heading": "Verdict", "body": "A strong fit for write-heavy key-value data that fits in memory. Benchmark it against a tuned RocksDB before switching.", "left": ["Session stores, feature flags, counters", "The keyspace fits in RAM"], "right": ["You need range scans or time series", "Billions of keys on one node"]}
+  ]
+}

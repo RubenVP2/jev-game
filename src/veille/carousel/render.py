@@ -120,14 +120,18 @@ async def render_slides(
             except Exception as exc:  # noqa: BLE001 - fonts unreachable: render with fallback fonts
                 log.warning("fonts not loaded, rendering with fallbacks: %s", exc)
             await page.evaluate("document.fonts.ready")
+            # Height: shorter text reads better than smaller text, so overflow goes back to the writer.
             for m in await page.evaluate(MEASURE_JS.replace("FILL", str(FILL))):
-                kind = content.slides[m["index"] - 1].kind
                 if m["over"] > 0.01:
+                    kind = content.slides[m["index"] - 1].kind
                     pct = round(m["over"] * 100)
                     overflows.append(f"slide {m['index']} ({kind}): text is {pct}% taller than the frame, cut it by about {pct + 10}%")
-                if m["wide"] > 0.01:
-                    overflows.append(f"slide {m['index']} ({kind}): code lines are too wide, keep them under 48 characters")
             await page.evaluate(AUTOFIT_JS.replace("FILL", str(FILL)))
+            # Width: a slightly smaller code font is fine; only report code that still does not fit.
+            for m in await page.evaluate(MEASURE_JS.replace("FILL", str(FILL))):
+                if m["wide"] > 0.01:
+                    kind = content.slides[m["index"] - 1].kind
+                    overflows.append(f"slide {m['index']} ({kind}): code lines are too wide, re-wrap them under 56 characters")
             for n in range(1, len(content.slides) + 1):
                 path = out_dir / f"slide-{n:02d}.jpg"
                 await page.locator(f"#slide-{n}").screenshot(path=str(path), type="jpeg", quality=92)
