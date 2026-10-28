@@ -1,52 +1,32 @@
-# Déploiement Docker Compose / Dokploy.
-# Dans Dokploy : "Create Service" → "Compose", pointez ce dépôt, puis dans l'onglet
-# "Domains" associez votre domaine au service `app` sur le port 3000 (HTTPS obligatoire
-# pour le micro). Aucun port n'est publié sur l'hôte : Traefik route vers le conteneur.
 services:
   app:
     build: .
     restart: unless-stopped
-    expose:
-      - "3000"
+    env_file: .env
     environment:
-      PORT: 3000
-      KEV_URL: ${KEV_URL-http://laya:8008}
-      KEV_API_KEY: ${KEV_API_KEY:-}
-      KEV_TIMEOUT_MS: ${KEV_TIMEOUT_MS:-1500}
-      KEV_CLUE_TIMEOUT_MS: ${KEV_CLUE_TIMEOUT_MS:-1000}
-      KEV_CLUE_THRESHOLD: ${KEV_CLUE_THRESHOLD:-0}
-      MIN_PLAYERS: ${MIN_PLAYERS:-4}
-      ROUND_SECONDS: ${ROUND_SECONDS:-180}
-      TURN_URL: ${TURN_URL:-}
-      TURN_USERNAME: ${TURN_USERNAME:-}
-      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
-    depends_on:
-      - laya
-
-  # Moteur de décision « Système 1 » : Laya multilingue (français), contrat /v1/systemone,
-  # réseau interne uniquement. ~1,5 Go de RAM, ~200 ms par question sur CPU.
-  # Alternative Kev (anglais, plus lourd) : docker-compose.kev.yml.
-  laya:
-    build:
-      context: ./laya
-      args:
-        TORCH_INDEX: ${LAYA_TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
-    restart: unless-stopped
-    expose:
-      - "8008"
-    environment:
-      LAYA_SUBFOLDER: ${LAYA_SUBFOLDER:-multilingual}
-      KEV_API_KEY: ${KEV_API_KEY:-}
+      VEILLE_DATA_DIR: /app/data
     volumes:
-      - laya-hf:/data/hf
-    # GPU NVIDIA (~35 ms par question) : LAYA_TORCH_INDEX=https://download.pytorch.org/whl/cu128 et décommentez :
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+      - veille_data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    expose:
+      - "8080"
+
+  # Only for the "direct" backend (own Meta/TikTok apps): Threads and TikTok download the slides from
+  # https://DOMAIN. Not needed with Upload-Post. Start it with: docker compose --profile direct up -d
+  caddy:
+    image: caddy:2.8
+    profiles: [direct]
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - app
 
 volumes:
-  laya-hf:
+  veille_data:   # SQLite, slides, tokens. Backup: docker compose cp app:/app/data ./backup
+  caddy_data:

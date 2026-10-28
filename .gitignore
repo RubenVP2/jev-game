@@ -1,4 +1,9 @@
-node_modules/
-dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
 .env
-*.log
+data/
+out/

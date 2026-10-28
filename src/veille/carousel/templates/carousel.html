@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --w: {{ width }}px;
+    --h: {{ height }}px;
+    --bg: #0A0C0D;
+    --panel: #111517;
+    --line: #1F2629;
+    --text: #E9EEEC;
+    --muted: #8B9894;
+    --dim: #7C8985;
+    --accent: {{ accent }};
+    --sans: "Inter Tight", "Inter", "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; }
+  .slide {
+    width: var(--w); height: var(--h); position: relative; overflow: hidden;
+    background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 90px 90px,
+      linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 90px 90px,
+      var(--bg);
+    background-blend-mode: normal;
+    color: var(--text); font-family: var(--sans);
+    display: flex; flex-direction: column; padding: 72px 80px 64px;
+  }
+  .slide::before {  /* fade the grid towards the content */
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 40%, rgba(10,12,13,.55), rgba(10,12,13,.92) 70%);
+  }
+  .slide > * { position: relative; }
+
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 22px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase;
+    padding-bottom: 26px; border-bottom: 2px solid var(--line);
+  }
+  header .brand { color: var(--text); font-weight: 700; display: flex; align-items: center; gap: 14px; }
+  header .brand i { width: 14px; height: 14px; background: var(--accent); display: inline-block; }
+
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 40px; }
+
+  .kicker { font-family: var(--mono); font-size: 26px; letter-spacing: .16em; color: var(--accent); text-transform: uppercase; }
+  .label { font-family: var(--mono); font-size: 22px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase; }
+  h1 { font-size: 92px; line-height: 1.02; font-weight: 700; letter-spacing: -.035em; }
+  h2 { font-size: 64px; line-height: 1.06; font-weight: 700; letter-spacing: -.03em; }
+  .lead { font-size: 38px; line-height: 1.35; color: var(--muted); max-width: 880px; }
+  .body { font-size: 34px; line-height: 1.4; color: var(--muted); }
+
+  .signal { display: flex; gap: 0; border: 2px solid var(--line); align-self: flex-start; font-family: var(--mono); font-size: 24px; letter-spacing: .1em; text-transform: uppercase; }
+  .signal span { padding: 16px 24px; color: var(--muted); }
+  .signal span + span { border-left: 2px solid var(--line); }
+  .signal b { color: var(--text); font-weight: 700; }
+  ul.points { list-style: none; display: flex; flex-direction: column; gap: 30px; }
+  ul.points li { display: grid; grid-template-columns: 56px 1fr; font-size: 38px; line-height: 1.32; }
+  ul.points li::before { content: "—"; color: var(--accent); font-family: var(--mono); }
+
+  ol.steps { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); }
+  ol.steps li { counter-increment: s; position: relative; padding: 22px 0 22px 64px; font-size: 36px; line-height: 1.3; }
+  ol.steps li::before {
+    content: counter(s, decimal-leading-zero); position: absolute; left: -2px; top: 26px; transform: translateX(-50%);
+    background: var(--bg); color: var(--accent); font-family: var(--mono); font-size: 22px; padding: 6px 0; border: 2px solid var(--accent); width: 52px; text-align: center;
+  }
+
+  pre {
+    background: var(--panel); border: 2px solid var(--line); border-left: 6px solid var(--accent);
+    font-family: var(--mono); font-size: 29px; line-height: 1.5; padding: 36px 40px; white-space: pre; overflow: hidden; color: #D6E2DD; font-variant-ligatures: none;
+  }
+
+  .stat { font-family: var(--mono); font-size: 250px; line-height: .9; font-weight: 700; letter-spacing: -.06em; color: var(--accent); }
+  .stat-label { font-size: 50px; line-height: 1.15; font-weight: 600; letter-spacing: -.02em; }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 2px solid var(--line); }
+  .compare > div { padding: 36px; display: flex; flex-direction: column; gap: 22px; }
+  .compare > div + div { border-left: 2px solid var(--line); background: rgba(255,255,255,.02); }
+  .compare h3 { font-family: var(--mono); font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  .compare ul, .split ul { display: flex; flex-direction: column; gap: 18px; }
+  .compare li { list-style: none; font-size: 32px; line-height: 1.3; }
+
+  .verdict-body { font-size: 44px; line-height: 1.28; font-weight: 500; letter-spacing: -.015em; border-left: 6px solid var(--accent); padding-left: 36px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .split > div { border-top: 2px solid var(--line); padding-top: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .split li { list-style: none; font-size: 30px; line-height: 1.3; color: var(--text); }
+  .split .no h3 { color: #FF8A7A; }
+  .split h3 { font-family: var(--mono); font-size: 22px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; }
+
+  footer { display: flex; flex-direction: column; gap: 22px; }
+  .progress { display: flex; gap: 8px; }
+  .progress span { flex: 1; height: 5px; background: var(--line); }
+  .progress span.on { background: var(--accent); }
+  .meta { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 21px; letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+  .meta b { color: var(--muted); font-weight: 500; }
+</style>
+</head>
+<body>
+{% for s in slides %}
+{% set current = loop.index %}
+<section class="slide" id="slide-{{ loop.index }}">
+  <header>
+    <span class="brand"><i></i>{{ brand }}</span>
+    <span>BRIEF {{ issue }} · {{ date }}</span>
+  </header>
+  <main>
+  {% if s.kind == "cover" %}
+    <div class="kicker">{{ s.kicker }}</div>
+    <h1>{{ s.heading }}</h1>
+    {% if s.body %}<p class="lead">{{ s.body }}</p>{% endif %}
+    {% if signal %}<div class="signal">{% for value, label in signal %}<span><b>{{ value }}</b> {{ label }}</span>{% endfor %}</div>{% endif %}
+  {% elif s.kind == "points" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / Key points</div>
+    <h2>{{ s.heading }}</h2>
+    <ul class="points">{% for b in s.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+  {% elif s.kind == "mechanism" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / Mechanism</div>
+    <h2>{{ s.heading }}</h2>
+    <ol class="steps">{% for b in s.bullets %}<li>{{ b }}</li>{% endfor %}</ol>
+  {% elif s.kind == "code" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / In practice</div>
+    <h2>{{ s.heading }}</h2>
+    <pre>{{ s.code }}</pre>
+    {% if s.body %}<p class="body">{{ s.body }}</p>{% endif %}
+  {% elif s.kind == "stat" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / Measured</div>
+    <div class="stat">{{ s.value }}</div>
+    <div class="stat-label">{{ s.label }}</div>
+    {% if s.body %}<p class="body">{{ s.body }}</p>{% endif %}
+  {% elif s.kind == "compare" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / Trade-off</div>
+    <h2>{{ s.heading }}</h2>
+    <div class="compare">
+      <div><h3>{{ s.left_title }}</h3><ul>{% for x in s.left %}<li>{{ x }}</li>{% endfor %}</ul></div>
+      <div><h3>{{ s.right_title }}</h3><ul>{% for x in s.right %}<li>{{ x }}</li>{% endfor %}</ul></div>
+    </div>
+  {% elif s.kind == "verdict" %}
+    <div class="label">{{ "%02d"|format(loop.index) }} / Verdict</div>
+    <h2>{{ s.heading }}</h2>
+    <p class="verdict-body">{{ s.body }}</p>
+    <div class="split">
+      <div><h3>Use it if</h3><ul>{% for x in s.left %}<li>{{ x | replace("Use it if:", "") | trim }}</li>{% endfor %}</ul></div>
+      <div class="no"><h3>Skip it if</h3><ul>{% for x in s.right %}<li>{{ x | replace("Skip it if:", "") | trim }}</li>{% endfor %}</ul></div>
+    </div>
+  {% endif %}
+  </main>
+  <footer>
+    <div class="progress">{% for _ in slides %}<span class="{{ 'on' if loop.index <= current }}"></span>{% endfor %}</div>
+    <div class="meta"><span><b>{{ source }}</b></span><span>{{ handle }}</span><span>{{ "%02d"|format(loop.index) }} / {{ "%02d"|format(slides|length) }}</span></div>
+  </footer>
+</section>
+{% endfor %}
+</body>
+</html>

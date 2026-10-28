@@ -1,0 +1,114 @@
+# Pipeline configuration. Secrets go in .env, never here.
+
+timezone: Europe/Paris
+
+schedule:
+  # Publication slots (local time). One draft is generated per slot.
+  slots: ["08:00", "19:00"]
+  # How long before each slot the draft is generated and sent to Discord.
+  draft_lead_minutes: 120
+
+brand:
+  name: "SIGNAL"
+  tagline: "Engineering signal, no noise."
+  handle: ""   # empty: taken from the connected Threads account
+  accent: "#7CFFB2"
+  tiktok_hashtags: ["#softwareengineering", "#tech"]
+
+sources:
+  github:
+    enabled: true
+    # "" = all languages. One trending page is fetched per entry.
+    languages: ["", "python", "rust", "go", "typescript"]
+    since: daily
+    min_stars_today: 80
+  hackernews:
+    enabled: true
+    min_points: 120
+    lookback_hours: 36
+  reddit:
+    enabled: true
+    subreddits: [programming, MachineLearning, LocalLLaMA, rust, golang, devops, netsec, ExperiencedDevs]
+    min_score: 150
+    period: day
+
+ranking:
+  # Top candidates (heuristic score) sent to the LLM for editorial triage.
+  shortlist_size: 25
+  # Do not cover a topic already drafted within this window.
+  dedup_days: 21
+
+llm:
+  providers:
+    google:
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+      api_key_env: GOOGLE_AI_API_KEY
+    openrouter:
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+    orcarouter:
+      base_url: https://api.orcarouter.ai/v1
+      api_key_env: ORCAROUTER_API_KEY
+  # Each task tries its chain in order. For structured output one model owns the whole
+  # write -> validate -> repair loop; the next model only takes over from scratch.
+  # Entries whose provider has no API key are skipped, so one key is enough to run.
+  # Model ids checked against the live OpenRouter and OrcaRouter catalogs (Oct 2026). Google ids
+  # from the Gemini API release notes (ai.google.dev/gemini-api/docs/changelog): gemini-3.8-flash is
+  # GA, gemini-pro-latest is the documented alias of the newest Pro model. If a provider no longer knows an id,
+  # the newest model of the same family is used automatically and `veille doctor` reports it.
+  tasks:
+    triage:   # editorial ranking of candidate stories (fast model)
+      - {provider: google, model: gemini-3.8-flash}
+      - {provider: openrouter, model: google/gemini-3.8-flash}
+      - {provider: orcarouter, model: google/gemini-3.8-flash}
+    facts:    # fact sheet extraction from the dossier (long context, precise)
+      - {provider: google, model: gemini-3.8-flash}
+      - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
+      - {provider: orcarouter, model: anthropic/claude-sonnet-5.5}
+    write:    # the brief itself
+      - {provider: openrouter, model: anthropic/claude-sonnet-5.5}
+      - {provider: orcarouter, model: anthropic/claude-sonnet-5.5}
+      - {provider: google, model: gemini-pro-latest}
+    judge:    # editor review; a different family than the writer avoids self-preference
+      - {provider: openrouter, model: openai/gpt-5.5}
+      - {provider: orcarouter, model: openai/gpt-5.5}
+      - {provider: google, model: gemini-pro-latest}
+  # Per-model adjustments, matched on "provider/model" (shell patterns, merged in order).
+  profiles:
+    "google/*": {json_mode: true}
+    "openrouter/google/*": {json_mode: true}
+    "orcarouter/google/*": {json_mode: true}
+    "openrouter/openai/*": {omit_temperature: true}
+    "orcarouter/openai/*": {omit_temperature: true}
+    "*gemini*":
+      extra_system: "Respect every character limit literally. Prefer the shorter phrasing."
+    "*deepseek*":
+      extra_system: "Output the JSON object only, without any reasoning text."
+
+harness:
+  judge_enabled: true
+  min_score: 7.5        # judge score (0-10) under which the draft is revised
+  max_revisions: 2
+  exemplars: 3          # approved posts (then golden examples) injected as style references
+  enforce_grounding: true
+
+carousel:
+  width: 1080
+  height: 1350
+  min_slides: 5
+  max_slides: 8
+
+publish:
+  # auto: Upload-Post when UPLOADPOST_API_KEY is set (one key, no domain, no developer apps),
+  # otherwise the platforms' own APIs with your Meta/TikTok apps ("direct").
+  backend: auto
+  threads:
+    enabled: true
+    # Post the rendered slides as a carousel attached to the main post.
+    attach_carousel: true
+  tiktok:
+    enabled: true
+    # auto: public direct post through Upload-Post; inbox draft through your own TikTok app (direct posts
+    # stay private until that app passes TikTok's audit). Or force DIRECT_POST / MEDIA_UPLOAD.
+    mode: auto
+    privacy_level: PUBLIC_TO_EVERYONE
