@@ -1,0 +1,29 @@
+---
+import Matou from '../components/Matou.astro';
+import Base from '../layouts/Base.astro';
+---
+
+<Base titre="Page introuvable" description="Cette page n'existe pas (ou plus)." indexer={false}>
+  <div class="perdu">
+    <Matou expression="sceptique" class="perdu-matou" decoratif />
+    <h1>Cette page est une <mark>rumeur</mark></h1>
+    <p>Matou a cherché partout : elle n'existe pas (ou plus).</p>
+    <p><a class="bouton" href="/">Retour à l'accueil</a></p>
+  </div>
+</Base>
+
+<style>
+  .perdu {
+    text-align: center;
+    max-width: 32rem;
+    margin: 2rem auto;
+  }
+  :global(.perdu-matou) {
+    width: 220px;
+    margin: 0 auto;
+  }
+  p {
+    font-family: var(--font-main);
+    font-size: 1.15rem;
+  }
+</style>

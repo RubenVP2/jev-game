@@ -1,0 +1,92 @@
+/* Injecté tel quel dans Base.astro (?raw) : le minifieur CSS fusionnait animation-timeline
+   dans le raccourci « animation », ce que les navigateurs refusent. */
+/* Le mouvement des vidéos : entrées sèches au défilement, visibles par défaut,
+   seulement là où le navigateur sait lier une animation au défilement. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    [data-entre] {
+      animation: entree linear both;
+      animation-timeline: view();
+      animation-range: entry 5% entry 45%;
+    }
+    [data-anime] mark,
+    mark[data-anime] {
+      animation: surligne linear both;
+      animation-timeline: view();
+      animation-range: entry 30% cover 35%;
+    }
+    [data-anime] .tampon {
+      animation: tampon linear both;
+      animation-timeline: view();
+      animation-range: entry 40% cover 40%;
+    }
+    [data-anime] .fleche {
+      animation: fleche linear both;
+      animation-timeline: view();
+      animation-range: entry 20% cover 50%;
+    }
+    [data-anime] .entoure {
+      animation: entoure linear both;
+      animation-timeline: view();
+      animation-range: cover 40% cover 55%;
+    }
+  }
+}
+
+@keyframes entree {
+  from {
+    opacity: 0;
+    transform: translateY(2.5rem) rotate(-1.5deg);
+  }
+  70% {
+    transform: translateY(-0.3rem) rotate(0.3deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes surligne {
+  from {
+    background-size: 0% 78%;
+  }
+  to {
+    background-size: 100% 78%;
+  }
+}
+@keyframes tampon {
+  from {
+    opacity: 0;
+    transform: rotate(-6deg) scale(2.2);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-6deg) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-6deg) scale(1);
+  }
+}
+@keyframes fleche {
+  /* elle balaie jusqu'au bout, hésite, puis revient se poser sur le verdict (formule de HypeMetre.astro) */
+  from {
+    left: calc(0.5 * (100% - 1.5rem) / 3 - 1.1rem);
+  }
+  55% {
+    left: calc(2.5 * (100% - 1.5rem) / 3 + 1.5rem - 1.1rem);
+  }
+  to {
+    left: calc((var(--cible) + 0.5) * (100% - 1.5rem) / 3 + var(--cible) * 0.75rem - 1.1rem);
+  }
+}
+@keyframes entoure {
+  /* le stylo rouge passe de gauche à droite */
+  from {
+    clip-path: inset(-20% 100% -20% -20%);
+  }
+  to {
+    clip-path: inset(-20% -20% -20% -20%);
+  }
+}
+

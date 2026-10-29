@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.dev.vars
+contenu/
+.contenu-git/
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/build/

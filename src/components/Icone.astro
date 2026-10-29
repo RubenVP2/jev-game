@@ -1,0 +1,29 @@
+---
+// Les icônes au feutre des vidéos (brand/icones/), en SVG inline.
+const dessins = import.meta.glob<string>('@contenu/brand/icones/*.svg', {eager: true, query: '?raw', import: 'default'});
+
+type Props = {nom: string; class?: string};
+const {nom, class: classe} = Astro.props;
+const brut = Object.entries(dessins).find(([f]) => f.endsWith(`/${nom}.svg`))?.[1];
+if (!brut) throw new Error(`Icône inconnue « ${nom} »`);
+const svg = brut
+  .replace(/<\?xml[^>]*\?>\s*/, '')
+  .replace(/\swidth="\d+"\sheight="\d+"/, '')
+  .replace('<svg', '<svg aria-hidden="true" focusable="false"');
+---
+
+<span class:list={['icone', classe]} set:html={svg} />
+
+<style>
+  .icone {
+    display: inline-block;
+    width: 2.75rem;
+    flex: none;
+  }
+  .icone :global(svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+</style>

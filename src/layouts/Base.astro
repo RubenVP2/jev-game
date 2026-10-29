@@ -1,0 +1,116 @@
+---
+import tokens from '@contenu/brand/tokens.json';
+import Matou from '../components/Matou.astro';
+import {MARQUE, RESEAUX} from '../config';
+import '../styles/global.css';
+import mouvement from '../styles/mouvement.css?raw';
+
+type Props = {
+  titre: string;
+  description: string;
+  image?: string;
+  type?: 'website' | 'article';
+  indexer?: boolean;
+  jsonLd?: object[];
+  publie?: Date;
+};
+const {titre, description, image = '/og.png', type = 'website', indexer = true, jsonLd = [], publie} = Astro.props;
+
+const canonique = new URL(Astro.url.pathname, Astro.site);
+const imageAbsolue = new URL(image, Astro.site);
+const titreComplet = titre === MARQUE.nom ? MARQUE.nomComplet : `${titre} · ${MARQUE.nom}`;
+const c = tokens.colors;
+// les couleurs viennent de brand/tokens.json, comme dans les vidéos
+const variables = `:root{--papier:${c.papier};--carreau:${c.carreau};--marge:${c.marge};--encre:${c.encre};--graphite:${c.graphite};--blanc:${c.blanc};--surligneur:${c.surligneur};--bleu:${c.stylo.bleu};--vert:${c.stylo.vert};--rouge:${c.stylo.rouge};--rose:${c.fluo.rose};--fluo-vert:${c.fluo.vert};--fluo-bleu:${c.fluo.bleu};--orange:${c.fluo.orange}}`;
+
+const organisation = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': new URL('/#matou', Astro.site).href,
+  name: MARQUE.nomComplet,
+  alternateName: '@matou_ai',
+  url: new URL('/', Astro.site).href,
+  logo: new URL('/logo.png', Astro.site).href,
+  description: MARQUE.description,
+  sameAs: RESEAUX.map((r) => r.url),
+};
+const actuel = Astro.url.pathname;
+---
+
+<!doctype html>
+<html lang={MARQUE.langue}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{titreComplet}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonique} />
+    {!indexer && <meta name="robots" content="noindex, follow" />}
+    <meta name="theme-color" content={c.papier} />
+    <meta name="color-scheme" content="light" />
+
+    <link rel="preload" href="/fonts/permanent-marker.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/shantell-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <style is:inline set:html={variables} />
+    <style is:inline set:html={mouvement} />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="alternate" type="application/rss+xml" title={`${MARQUE.nom} · le blog`} href={new URL('/rss.xml', Astro.site)} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+
+    <meta property="og:type" content={type} />
+    <meta property="og:site_name" content={MARQUE.nomComplet} />
+    <meta property="og:locale" content={MARQUE.locale} />
+    <meta property="og:title" content={titre} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonique} />
+    <meta property="og:image" content={imageAbsolue} />
+    <meta property="og:image:alt" content="Matou, le chat à lunettes, sur une page de cahier" />
+    {publie && <meta property="article:published_time" content={publie.toISOString()} />}
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json" set:html={JSON.stringify([organisation, ...jsonLd])} />
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <filter id="feutre" x="-4%" y="-8%" width="108%" height="116%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" />
+        <feDisplacementMap in="SourceGraphic" scale="3.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
+    <a class="evitement" href="#contenu">Aller au contenu</a>
+    <header class="entete">
+      <a href="/" class="logo" aria-label="Matou, accueil">
+        <Matou expression="neutre" class="logo-matou" decoratif ombre={false} />
+        <span>Matou</span>
+      </a>
+      <nav aria-label="Principale">
+        <a href="/blog/" aria-current={actuel.startsWith('/blog') ? 'page' : undefined}>Blog</a>
+        <a href={RESEAUX[0].url} rel="noopener" target="_blank" class="bouton trait">S'abonner</a>
+      </nav>
+    </header>
+    <main id="contenu">
+      <slot />
+    </main>
+    <footer class="pied">
+      <p>
+        <strong>Matou</strong> · L'actu de l'IA en 30 secondes, sources à l'appui.
+      </p>
+      <nav aria-label="Pied de page">
+        <a href="/blog/">Blog</a>
+        <a href="/rss.xml">RSS</a>
+        {
+          RESEAUX.map((r) => (
+            <a href={r.url} rel="me noopener" target="_blank">
+              {r.nom}
+            </a>
+          ))
+        }
+      </nav>
+      <p class="petit">Dessiné à la main, raconté par un chat. © {new Date().getFullYear()} Matou</p>
+    </footer>
+  </body>
+</html>

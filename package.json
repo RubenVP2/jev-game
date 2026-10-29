@@ -1,0 +1,28 @@
+{
+  "name": "matou-site",
+  "private": true,
+  "type": "module",
+  "description": "Site de Matou (@matou.ai) : page d'accueil et blog, en statique sur Cloudflare Workers",
+  "scripts": {
+    "contenu": "node scripts/contenu.mjs",
+    "predev": "node scripts/contenu.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/contenu.mjs",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "check": "astro check",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.5",
+    "@astrojs/rss": "4.0.19",
+    "@astrojs/sitemap": "3.7.4",
+    "astro": "7.4.3",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "typescript": "5.9.3",
+    "wrangler": "4.154.0"
+  }
+}

@@ -1,0 +1,249 @@
+---
+import {getImage, Image} from 'astro:assets';
+import {render} from 'astro:content';
+import CarteArticle from '../../components/CarteArticle.astro';
+import HypeMetre from '../../components/HypeMetre.astro';
+import Reseaux from '../../components/Reseaux.astro';
+import Tampon from '../../components/Tampon.astro';
+import Base from '../../layouts/Base.astro';
+import {articles, dateLongue, SERIES, type Article} from '../../lib/episodes';
+
+export async function getStaticPaths() {
+  const liste = await articles();
+  return liste.map((article, i) => ({
+    params: {slug: article.slug},
+    props: {article, autres: liste.filter((_, j) => j !== i).slice(0, 2)},
+  }));
+}
+
+type Props = {article: Article; autres: Article[]};
+const {article: a, autres} = Astro.props;
+const {Content} = await render(a.entree);
+const url = new URL(`/blog/${a.slug}/`, Astro.site).href;
+const image = a.miniature ? (await getImage({src: a.miniature, width: 540, format: 'jpeg'})).src : undefined;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: a.titre,
+    description: a.description,
+    url,
+    mainEntityOfPage: url,
+    datePublished: a.date.toISOString(),
+    dateModified: a.date.toISOString(),
+    inLanguage: 'fr-FR',
+    image: image ? new URL(image, Astro.site).href : undefined,
+    author: {'@id': new URL('/#matou', Astro.site).href},
+    publisher: {'@id': new URL('/#matou', Astro.site).href},
+    isBasedOn: a.source.url,
+    citation: {'@type': 'CreativeWork', name: `Annonce de ${a.source.nom}`, url: a.source.url, datePublished: a.source.date},
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {'@type': 'ListItem', position: 1, name: 'Accueil', item: new URL('/', Astro.site).href},
+      {'@type': 'ListItem', position: 2, name: 'Blog', item: new URL('/blog/', Astro.site).href},
+      {'@type': 'ListItem', position: 3, name: a.titre, item: url},
+    ],
+  },
+];
+---
+
+<Base titre={a.titre} description={a.description} type="article" image={image} publie={a.date} jsonLd={jsonLd}>
+  <nav class="fil" aria-label="Fil d'Ariane">
+    <a href="/">Accueil</a> › <a href="/blog/">Blog</a> › <span aria-current="page">#{a.numero}</span>
+  </nav>
+
+  <article>
+    <header class="tete">
+      <div class="titres">
+        <h1>{a.titre}</h1>
+        <p class="chapo">{a.description}</p>
+        <p class="meta">
+          <span class="num">Matou #{a.numero}</span>
+          <span>{SERIES[a.serie]}</span>
+          <Tampon statut={a.statut} taille="1.05rem" />
+        </p>
+        <p class="infos">
+          <time datetime={a.date.toISOString()}>{dateLongue(a.date)}</time> · Source :{' '}
+          <a href={a.source.url} rel="noopener" target="_blank">{a.source.nom}</a>
+        </p>
+      </div>
+      {
+        a.miniature && (
+          <figure class="mini">
+            <Image src={a.miniature} alt={`Miniature de la vidéo Matou #${a.numero}`} widths={[220, 440]} sizes="(max-width: 48rem) 200px, 220px" loading="eager" fetchpriority="high" />
+            <figcaption>La vidéo est sur les réseaux de Matou.</figcaption>
+          </figure>
+        )
+      }
+    </header>
+
+    <div class="corps">
+      <Content />
+    </div>
+
+    <aside class="verdict feuille trait" aria-label="Verdict" data-anime>
+      <h2 class="titre-hype">Le Hype-mètre de Matou</h2>
+      <HypeMetre verdict={a.verdict} raison={a.raison} />
+    </aside>
+
+    <aside class="source" aria-label="Source">
+      <h2>Source</h2>
+      <p>
+        <a href={a.source.url} rel="noopener" target="_blank">{a.source.nom}</a>, publié le {dateLongue(new Date(a.source.date))}.
+        Les chiffres cités ici viennent de cette source ou des documents qu'elle publie ; Matou résume et commente, il ne recopie pas.
+      </p>
+    </aside>
+  </article>
+
+  <section class="suivre feuille trait" aria-labelledby="voir">
+    <h2 id="voir">Voir la vidéo en 30 secondes</h2>
+    <p>Matou explique cette annonce en vidéo. Une par jour, abonne-toi :</p>
+    <Reseaux source={`article-${a.numero}`} />
+  </section>
+
+  {
+    autres.length > 0 && (
+      <section class="autres" aria-labelledby="autres">
+        <h2 id="autres">À lire aussi</h2>
+        <div class="liste">
+          {autres.map((x) => (
+            <CarteArticle article={x} titre="h3" />
+          ))}
+        </div>
+      </section>
+    )
+  }
+</Base>
+
+<style>
+  .fil {
+    font-family: var(--font-main);
+    font-size: 0.9rem;
+    margin-block: 0.5rem 1.5rem;
+  }
+  .fil a {
+    color: var(--encre);
+  }
+  .tete {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 2rem;
+    align-items: start;
+    max-width: 58rem;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin: 0;
+    font-family: var(--font-main);
+    font-weight: 800;
+  }
+  .num {
+    background: var(--surligneur);
+    padding: 0 0.35em;
+    font-family: var(--font-titre);
+    font-weight: 400;
+  }
+  h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin: 0 0 1rem;
+  }
+  .chapo {
+    font-family: var(--font-main);
+    font-size: 1.2rem;
+    margin: 0 0 1.2rem;
+  }
+  .meta {
+    margin-bottom: 0.6rem;
+  }
+  .infos {
+    font-size: 0.95rem;
+    margin: 0;
+  }
+  .mini {
+    margin: 0;
+    transform: rotate(2deg);
+  }
+  .mini :global(img) {
+    border: 3px solid var(--encre);
+    border-radius: 10px;
+    box-shadow: var(--ombre);
+  }
+  .mini figcaption {
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  .corps {
+    max-width: var(--lecture);
+    margin-top: 2rem;
+  }
+  .corps :global(h2) {
+    font-size: 1.7rem;
+    margin: 2.5rem 0 0.75rem;
+  }
+  /* la nuance importante : un post-it jaune collé dans la marge du texte */
+  .corps :global(blockquote) {
+    position: relative;
+    margin: 2rem 0;
+    padding: 1.1rem 1.4rem;
+    background: #fff4b8;
+    box-shadow: var(--ombre);
+    transform: rotate(-0.8deg);
+    font-family: var(--font-main);
+  }
+  .corps :global(blockquote p) {
+    margin: 0;
+  }
+  .corps :global(li) {
+    margin-block: 0.35rem;
+  }
+  .verdict {
+    max-width: var(--lecture);
+    margin-block: 3rem 2rem;
+  }
+  .titre-hype {
+    margin: 0 0 0.5rem;
+    font-size: 1.5rem;
+  }
+  .source {
+    max-width: var(--lecture);
+    font-size: 0.95rem;
+  }
+  .source h2 {
+    font-size: 1.3rem;
+    margin: 0 0 0.4rem;
+  }
+  section {
+    margin-top: 3rem;
+  }
+  .suivre {
+    max-width: var(--lecture);
+  }
+  .suivre h2,
+  .autres h2 {
+    font-size: 1.6rem;
+    margin: 0 0 0.75rem;
+  }
+  .liste {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+    max-width: 58rem;
+  }
+  @media (max-width: 48rem) {
+    .tete {
+      grid-template-columns: 1fr;
+    }
+    .mini {
+      max-width: 200px;
+      grid-row: 1;
+    }
+  }
+</style>
