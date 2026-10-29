@@ -1,0 +1,282 @@
+/* Le cahier de Matou, version web : docs/design-system.md, couleurs dans brand/tokens.json */
+@font-face {
+  font-family: 'Permanent Marker';
+  src: url('/fonts/permanent-marker.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'Shantell Sans';
+  src: url('/fonts/shantell-sans.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 800;
+}
+
+:root {
+  --font-titre: 'Permanent Marker', 'Comic Sans MS', cursive;
+  --font-main: 'Shantell Sans', ui-rounded, system-ui, sans-serif;
+  --font-texte: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --largeur: 72rem;
+  --lecture: 40rem;
+  --carreau-px: 24px;
+  --gouttiere: clamp(1.5rem, 5vw, 4.5rem);
+  --ombre: 7px 9px 3px rgb(28 27 26 / 0.12);
+  --ressort: cubic-bezier(0.34, 1.4, 0.64, 1);
+  accent-color: var(--bleu);
+  caret-color: var(--bleu);
+  scrollbar-color: var(--encre) var(--papier);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 1rem;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--encre);
+  font-family: var(--font-texte);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  /* papier à petits carreaux + marge rouge, en CSS pur (aucune image) */
+  background-color: var(--papier);
+  background-image:
+    linear-gradient(90deg, transparent calc(var(--gouttiere) - 1.25rem - 1px), var(--marge) calc(var(--gouttiere) - 1.25rem - 1px), var(--marge) calc(var(--gouttiere) - 1.25rem + 1px), transparent calc(var(--gouttiere) - 1.25rem + 1px)),
+    linear-gradient(var(--carreau) 1px, transparent 1px),
+    linear-gradient(90deg, var(--carreau) 1px, transparent 1px);
+  background-size: 100% 100%, var(--carreau-px) var(--carreau-px), var(--carreau-px) var(--carreau-px);
+}
+
+::selection {
+  background: var(--surligneur);
+  color: var(--encre);
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--largeur);
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem var(--gouttiere);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-titre);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--bleu);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--bleu);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Le surligneur : le fluo se dessine de gauche à droite (animé plus bas) */
+mark {
+  color: inherit;
+  padding: 0 0.12em;
+  background: linear-gradient(100deg, transparent 0.15em, var(--surligneur) 0.2em, var(--surligneur) calc(100% - 0.2em), transparent calc(100% - 0.15em)) no-repeat 0 60% / 100% 78%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Le trait au feutre : un contour qui ne tremble que sur le bord (filtre #feutre dans Base.astro) */
+.trait {
+  position: relative;
+  isolation: isolate;
+}
+.trait::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--fond, var(--blanc));
+  border: 3px solid var(--encre);
+  border-radius: var(--rayon, 10px 14px 9px 12px);
+  filter: url(#feutre);
+}
+
+/* Feuille blanche scotchée sur le cahier, avec l'ombre posée des vidéos */
+.feuille {
+  position: relative;
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+.feuille::before {
+  box-shadow: var(--ombre);
+}
+.feuille::after {
+  content: '';
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  width: 92px;
+  height: 26px;
+  transform: translateX(-50%) rotate(-3deg);
+  background: rgb(255 236 160 / 0.78);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.06);
+}
+
+/* Boutons : feutre noir, fond surligneur */
+.bouton {
+  --fond: var(--surligneur);
+  --rayon: 255px 18px 225px 18px / 18px 225px 18px 255px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.1rem;
+  padding: 0.65rem 1.5rem;
+  color: var(--encre);
+  font-family: var(--font-main);
+  font-weight: 800;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: transform 0.18s var(--ressort);
+}
+.bouton::before {
+  box-shadow: var(--ombre);
+  transition: box-shadow 0.18s ease;
+}
+.bouton:hover {
+  transform: translate(-1px, -3px) rotate(-1deg);
+}
+.bouton:hover::before {
+  box-shadow: 9px 13px 6px rgb(28 27 26 / 0.16);
+}
+.bouton:active {
+  transform: translate(1px, 1px);
+}
+.bouton.secondaire {
+  --fond: var(--blanc);
+}
+
+/* Le tampon ANNONCÉ / DISPONIBLE / RUMEUR */
+.tampon {
+  display: inline-block;
+  padding: 0.12em 0.6em;
+  border: 3px solid var(--c);
+  border-radius: 8px;
+  color: var(--c);
+  font-family: var(--font-titre);
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  transform: rotate(-6deg);
+  mix-blend-mode: multiply;
+}
+
+.evitement {
+  position: absolute;
+  left: -9999px;
+}
+.evitement:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 10;
+  background: var(--blanc);
+  padding: 0.5rem 1rem;
+}
+
+/* En-tête et pied */
+.entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: var(--largeur);
+  margin: 0 auto;
+  padding: 0.9rem 1.25rem 0.9rem var(--gouttiere);
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--encre);
+  text-decoration: none;
+  font-family: var(--font-titre);
+  font-size: 1.5rem;
+}
+.logo-matou {
+  width: 46px;
+}
+.entete nav {
+  display: flex;
+  gap: 1.1rem;
+  align-items: center;
+  font-family: var(--font-main);
+  font-weight: 800;
+}
+.entete nav a {
+  color: var(--encre);
+  text-decoration: none;
+}
+.entete nav a[aria-current='page'] {
+  background: linear-gradient(var(--surligneur), var(--surligneur)) no-repeat 0 65% / 100% 70%;
+}
+.entete .bouton {
+  min-height: 2.5rem;
+  padding: 0.35rem 1rem;
+  font-size: 1rem;
+}
+
+.pied {
+  position: relative;
+  padding: 2.5rem 1.25rem 2.5rem var(--gouttiere);
+  border-top: 3px solid var(--encre);
+  font-family: var(--font-main);
+}
+.pied > * {
+  max-width: calc(var(--largeur) - var(--gouttiere));
+  margin-left: auto;
+  margin-right: auto;
+}
+.pied nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.4rem;
+  margin-block: 1rem;
+}
+.pied a {
+  color: var(--encre);
+}
+.petit {
+  font-size: 0.85rem;
+  color: #55524d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

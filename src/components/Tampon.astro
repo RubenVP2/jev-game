@@ -1,0 +1,10 @@
+---
+import tokens from '@contenu/brand/tokens.json';
+import type {Statut} from '../lib/episodes';
+
+type Props = {statut: Statut; taille?: string};
+const {statut, taille = '1rem'} = Astro.props;
+const {label, couleur} = tokens.statut[statut];
+---
+
+<span class="tampon" style={`--c: ${couleur}; font-size: ${taille}`}>{label}</span>

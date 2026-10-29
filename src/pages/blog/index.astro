@@ -1,0 +1,83 @@
+---
+import CarteArticle from '../../components/CarteArticle.astro';
+import Matou from '../../components/Matou.astro';
+import Reseaux from '../../components/Reseaux.astro';
+import Base from '../../layouts/Base.astro';
+import {articles} from '../../lib/episodes';
+
+const liste = await articles();
+const description =
+  "Les décryptages de Matou : chaque annonce de l'IA expliquée en version texte, avec la source, le statut (annoncé, disponible ou rumeur) et le Hype-mètre.";
+const blog = {
+  '@context': 'https://schema.org',
+  '@type': 'Blog',
+  name: 'Le blog de Matou',
+  url: new URL('/blog/', Astro.site).href,
+  inLanguage: 'fr-FR',
+  publisher: {'@id': new URL('/#matou', Astro.site).href},
+  blogPost: liste.map((a) => ({
+    '@type': 'BlogPosting',
+    headline: a.titre,
+    url: new URL(`/blog/${a.slug}/`, Astro.site).href,
+    datePublished: a.date.toISOString(),
+  })),
+};
+---
+
+<Base titre="Le blog : l'actu de l'IA expliquée" description={description} jsonLd={[blog]}>
+  <header class="tete">
+    <div>
+      <h1>Le <mark>blog</mark> de Matou</h1>
+      <p>Chaque vidéo a sa version texte : un peu plus de détails, les chiffres, les nuances, et toujours la source.</p>
+    </div>
+    <Matou expression="reflechit" class="tete-matou" decoratif />
+  </header>
+
+  {
+    liste.length > 0 ? (
+      <div class="liste">
+        {liste.map((a) => (
+          <CarteArticle article={a} />
+        ))}
+      </div>
+    ) : (
+      <div class="vide feuille">
+        <p>Le premier article arrive avec la prochaine vidéo. En attendant, Matou est sur les réseaux :</p>
+        <Reseaux source="blog-vide" />
+      </div>
+    )
+  }
+</Base>
+
+<style>
+  .tete {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    gap: 1.5rem;
+    align-items: center;
+    margin-block: 1.5rem 2.5rem;
+  }
+  h1 {
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    margin: 0 0 0.75rem;
+  }
+  .tete p {
+    font-family: var(--font-main);
+    font-size: 1.15rem;
+    max-width: var(--lecture);
+    margin: 0;
+  }
+  .liste {
+    display: grid;
+    gap: 1.5rem;
+    max-width: 48rem;
+  }
+  .vide {
+    max-width: 40rem;
+  }
+  @media (max-width: 40rem) {
+    .tete {
+      grid-template-columns: 1fr 90px;
+    }
+  }
+</style>

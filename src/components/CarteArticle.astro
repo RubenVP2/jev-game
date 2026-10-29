@@ -1,0 +1,78 @@
+---
+import {Image} from 'astro:assets';
+import {dateLongue, SERIES, type Article} from '../lib/episodes';
+import Tampon from './Tampon.astro';
+
+type Props = {article: Article; titre?: 'h2' | 'h3'};
+const {article: a, titre: Titre = 'h2'} = Astro.props;
+---
+
+<article class="carte trait">
+  {a.miniature && <Image src={a.miniature} alt="" width={180} height={320} class="mini" loading="lazy" />}
+  <div class="texte">
+    <p class="meta">
+      <span class="num">#{a.numero}</span>
+      {SERIES[a.serie]} · <time datetime={a.date.toISOString()}>{dateLongue(a.date)}</time>
+    </p>
+    <Titre><a href={`/blog/${a.slug}/`}>{a.titre}</a></Titre>
+    <p class="desc">{a.description}</p>
+    <Tampon statut={a.statut} taille="0.95rem" />
+  </div>
+</article>
+
+<style>
+  .carte {
+    position: relative;
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 1rem;
+    align-items: start;
+    padding: 1rem;
+  }
+  .carte::before {
+    box-shadow: var(--ombre);
+  }
+  .mini {
+    width: 90px;
+    height: auto;
+    border: 2px solid var(--encre);
+    border-radius: 4px;
+  }
+  .meta {
+    margin: 0;
+    font-family: var(--font-main);
+    font-size: 0.9rem;
+  }
+  .num {
+    background: var(--surligneur);
+    padding: 0 0.3em;
+    font-weight: 800;
+  }
+  h2,
+  h3 {
+    margin: 0.3rem 0;
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+  h2 a,
+  h3 a {
+    color: var(--encre);
+    text-decoration: none;
+  }
+  /* toute la carte est cliquable, le lien reste unique pour les lecteurs d'écran */
+  h2 a::after,
+  h3 a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+  .carte:hover h2 a,
+  .carte:hover h3 a {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
+  .desc {
+    margin: 0 0 0.6rem;
+    font-size: 0.95rem;
+  }
+</style>

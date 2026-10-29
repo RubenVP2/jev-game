@@ -1,0 +1,106 @@
+---
+// Le Hype-mètre des vidéos : trois cases au feutre, la flèche hésite puis se pose,
+// le stylo rouge entoure le verdict (animé au défilement, voir global.css).
+import tokens from '@contenu/brand/tokens.json';
+import {surligner, type Verdict} from '../lib/episodes';
+import Icone from './Icone.astro';
+
+type Props = {verdict?: Verdict; raison?: string};
+const {verdict, raison} = Astro.props;
+const crans = Object.entries(tokens.hypeMetre) as [Verdict, {label: string; icone: string; fluo: string}][];
+const cible = verdict ? crans.findIndex(([id]) => id === verdict) : -1;
+---
+
+<figure class="hype" style={cible >= 0 ? `--cible: ${cible}` : undefined} data-anime>
+  {
+    cible >= 0 && (
+      <svg class="fleche" viewBox="-24 -12 48 74" aria-hidden="true">
+        <path d="M 0 60 L -22 20 L -8 20 L -8 -10 L 8 -10 L 8 20 L 22 20 Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  <ol class="cases">
+    {
+      crans.map(([id, c], i) => (
+        <li class:list={['case', 'trait', {choisie: i === cible}]} style={`--fluo: ${c.fluo}`} aria-current={i === cible ? 'true' : undefined}>
+          <Icone nom={c.icone} class="case-icone" />
+          <span>{c.label}</span>
+          {i === cible && (
+            <svg class="entoure" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <ellipse cx="50" cy="50" rx="56" ry="58" transform="rotate(-4 50 50)" />
+            </svg>
+          )}
+        </li>
+      ))
+    }
+  </ol>
+  {raison && <figcaption set:html={surligner(raison)} />}
+</figure>
+
+<style>
+  .hype {
+    position: relative;
+    margin: 0;
+    padding-top: 3.25rem;
+    max-width: 34rem;
+  }
+  .cases {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .case {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 0.4rem;
+    padding: 1rem 0.4rem 0.8rem;
+    --rayon: 14px;
+    font-family: var(--font-main);
+    font-weight: 800;
+    font-size: clamp(0.85rem, 3.4vw, 1.05rem);
+    line-height: 1.1;
+    text-align: center;
+  }
+  .case.choisie {
+    --fond: var(--fluo);
+    z-index: 2;
+  }
+  .case :global(.case-icone) {
+    width: clamp(2.2rem, 10vw, 3.4rem);
+  }
+  .entoure {
+    position: absolute;
+    inset: -14px -12px;
+    width: calc(100% + 24px);
+    height: calc(100% + 28px);
+    overflow: visible;
+    pointer-events: none;
+  }
+  .entoure {
+    mix-blend-mode: multiply;
+  }
+  .entoure ellipse {
+    fill: none;
+    stroke: var(--rouge);
+    stroke-width: 4px;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .fleche {
+    position: absolute;
+    top: 0;
+    width: 2.2rem;
+    left: calc((var(--cible) + 0.5) * (100% - 1.5rem) / 3 + var(--cible) * 0.75rem - 1.1rem);
+    color: var(--encre);
+  }
+  figcaption {
+    margin-top: 1.4rem;
+    font-family: var(--font-main);
+    font-weight: 800;
+    font-size: 1.15rem;
+  }
+</style>

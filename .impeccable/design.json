@@ -1,0 +1,465 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T20:23:32.858Z",
+  "title": "Design System: Matou",
+  "extensions": {
+    "colorMeta": {
+      "papier": {
+        "role": "neutral",
+        "displayName": "Papier crème",
+        "canonical": "#FBF5E6",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.003 88.718)",
+          "oklch(26.429% 0.007 88.718)",
+          "oklch(37.857% 0.01 88.718)",
+          "oklch(49.286% 0.012 88.718)",
+          "oklch(60.714% 0.014 88.718)",
+          "oklch(72.143% 0.016 88.718)",
+          "oklch(83.571% 0.018 88.718)",
+          "oklch(95% 0.01 88.718)"
+        ]
+      },
+      "carreau": {
+        "role": "neutral",
+        "displayName": "Bleu carreau",
+        "canonical": "#C9D9EC",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.005 252.705)",
+          "oklch(26.429% 0.014 252.705)",
+          "oklch(37.857% 0.017 252.705)",
+          "oklch(49.286% 0.02 252.705)",
+          "oklch(60.714% 0.024 252.705)",
+          "oklch(72.143% 0.027 252.705)",
+          "oklch(83.571% 0.03 252.705)",
+          "oklch(95% 0.015 252.705)"
+        ]
+      },
+      "marge": {
+        "role": "neutral",
+        "displayName": "Marge rouge",
+        "canonical": "#EE9A9A",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.022 19.64)",
+          "oklch(26.429% 0.055 19.64)",
+          "oklch(37.857% 0.065 19.64)",
+          "oklch(49.286% 0.076 19.64)",
+          "oklch(60.714% 0.086 19.64)",
+          "oklch(72.143% 0.097 19.64)",
+          "oklch(83.571% 0.095 19.64)",
+          "oklch(95% 0.042 19.64)"
+        ]
+      },
+      "encre": {
+        "role": "neutral",
+        "displayName": "Encre",
+        "canonical": "#1C1B1A",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.001 67.699)",
+          "oklch(26.429% 0.002 67.699)",
+          "oklch(37.857% 0.002 67.699)",
+          "oklch(49.286% 0.002 67.699)",
+          "oklch(60.714% 0.002 67.699)",
+          "oklch(72.143% 0.001 67.699)",
+          "oklch(83.571% 0.001 67.699)",
+          "oklch(95% 0 67.699)"
+        ]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#A9A6A0",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.002 84.58)",
+          "oklch(26.429% 0.005 84.58)",
+          "oklch(37.857% 0.006 84.58)",
+          "oklch(49.286% 0.007 84.58)",
+          "oklch(60.714% 0.008 84.58)",
+          "oklch(72.143% 0.009 84.58)",
+          "oklch(83.571% 0.008 84.58)",
+          "oklch(95% 0.004 84.58)"
+        ]
+      },
+      "blanc": {
+        "role": "neutral",
+        "displayName": "Feuille blanche",
+        "canonical": "#FFFFFF",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0 89.876)",
+          "oklch(26.429% 0 89.876)",
+          "oklch(37.857% 0 89.876)",
+          "oklch(49.286% 0 89.876)",
+          "oklch(60.714% 0 89.876)",
+          "oklch(72.143% 0 89.876)",
+          "oklch(83.571% 0 89.876)",
+          "oklch(95% 0 89.876)"
+        ]
+      },
+      "surligneur": {
+        "role": "primary",
+        "displayName": "Surligneur jaune",
+        "canonical": "#FFE14A",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.026 97.627)",
+          "oklch(26.429% 0.068 97.627)",
+          "oklch(37.857% 0.085 97.627)",
+          "oklch(49.286% 0.102 97.627)",
+          "oklch(60.714% 0.119 97.627)",
+          "oklch(72.143% 0.137 97.627)",
+          "oklch(83.571% 0.154 97.627)",
+          "oklch(95% 0.079 97.627)"
+        ]
+      },
+      "stylo-bleu": {
+        "role": "secondary",
+        "displayName": "Stylo bleu",
+        "canonical": "#2457C5",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.062 262.84)",
+          "oklch(26.429% 0.143 262.84)",
+          "oklch(37.857% 0.162 262.84)",
+          "oklch(49.286% 0.18 262.84)",
+          "oklch(60.714% 0.162 262.84)",
+          "oklch(72.143% 0.143 262.84)",
+          "oklch(83.571% 0.124 262.84)",
+          "oklch(95% 0.053 262.84)"
+        ]
+      },
+      "stylo-vert": {
+        "role": "secondary",
+        "displayName": "Stylo vert",
+        "canonical": "#1F8A4C",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.042 152.548)",
+          "oklch(26.429% 0.098 152.548)",
+          "oklch(37.857% 0.112 152.548)",
+          "oklch(49.286% 0.125 152.548)",
+          "oklch(60.714% 0.128 152.548)",
+          "oklch(72.143% 0.114 152.548)",
+          "oklch(83.571% 0.1 152.548)",
+          "oklch(95% 0.043 152.548)"
+        ]
+      },
+      "stylo-rouge": {
+        "role": "secondary",
+        "displayName": "Stylo rouge",
+        "canonical": "#D33A2C",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.059 29.455)",
+          "oklch(26.429% 0.137 29.455)",
+          "oklch(37.857% 0.157 29.455)",
+          "oklch(49.286% 0.177 29.455)",
+          "oklch(60.714% 0.187 29.455)",
+          "oklch(72.143% 0.167 29.455)",
+          "oklch(83.571% 0.147 29.455)",
+          "oklch(95% 0.063 29.455)"
+        ]
+      },
+      "fluo-rose": {
+        "role": "tertiary",
+        "displayName": "Fluo rose (pur buzz)",
+        "canonical": "#FF9EC4",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.025 355.176)",
+          "oklch(26.429% 0.062 355.176)",
+          "oklch(37.857% 0.075 355.176)",
+          "oklch(49.286% 0.088 355.176)",
+          "oklch(60.714% 0.101 355.176)",
+          "oklch(72.143% 0.114 355.176)",
+          "oklch(83.571% 0.12 355.176)",
+          "oklch(95% 0.054 355.176)"
+        ]
+      },
+      "fluo-vert": {
+        "role": "tertiary",
+        "displayName": "Fluo vert (prometteur)",
+        "canonical": "#9EEA8C",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.026 139.717)",
+          "oklch(26.429% 0.066 139.717)",
+          "oklch(37.857% 0.082 139.717)",
+          "oklch(49.286% 0.097 139.717)",
+          "oklch(60.714% 0.112 139.717)",
+          "oklch(72.143% 0.127 139.717)",
+          "oklch(83.571% 0.142 139.717)",
+          "oklch(95% 0.067 139.717)"
+        ]
+      },
+      "fluo-bleu": {
+        "role": "tertiary",
+        "displayName": "Fluo bleu",
+        "canonical": "#8FD3FF",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.017 237.738)",
+          "oklch(26.429% 0.044 237.738)",
+          "oklch(37.857% 0.054 237.738)",
+          "oklch(49.286% 0.063 237.738)",
+          "oklch(60.714% 0.073 237.738)",
+          "oklch(72.143% 0.083 237.738)",
+          "oklch(83.571% 0.092 237.738)",
+          "oklch(95% 0.041 237.738)"
+        ]
+      },
+      "fluo-orange": {
+        "role": "tertiary",
+        "displayName": "Fluo orange (game changer)",
+        "canonical": "#FFB65C",
+        "source": "brand/tokens.json",
+        "tonalRamp": [
+          "oklch(15% 0.026 69.646)",
+          "oklch(26.429% 0.066 69.646)",
+          "oklch(37.857% 0.08 69.646)",
+          "oklch(49.286% 0.094 69.646)",
+          "oklch(60.714% 0.108 69.646)",
+          "oklch(72.143% 0.122 69.646)",
+          "oklch(83.571% 0.135 69.646)",
+          "oklch(95% 0.06 69.646)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Hook",
+        "purpose": "Le hook de l'accueil uniquement, en capitales."
+      },
+      "headline": {
+        "displayName": "Titre de scène",
+        "purpose": "Titres de scène de l'accueil (capitales) et titres d'article."
+      },
+      "title": {
+        "displayName": "Intertitre",
+        "purpose": "Intertitres, titres de cartes et de feuilles."
+      },
+      "ecran": {
+        "displayName": "Texte d'écran",
+        "purpose": "Sous-titre d'accroche sur une ligne, métadonnées, légendes."
+      },
+      "chapo": {
+        "displayName": "Chapô",
+        "purpose": "Phrases d'introduction de scène et d'article."
+      },
+      "body": {
+        "displayName": "Lecture",
+        "purpose": "Corps des articles, colonne de 40rem."
+      },
+      "label": {
+        "displayName": "Étiquette",
+        "purpose": "Boutons, navigation, liens de suite."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ombre-posee",
+        "value": "7px 9px 3px rgb(28 27 26 / 0.12)",
+        "purpose": "Feuilles, cartes, boutons, étiquette, miniature, post-it posés sur le cahier."
+      },
+      {
+        "name": "ombre-soulevee",
+        "value": "9px 13px 6px rgb(28 27 26 / 0.16)",
+        "purpose": "Bouton survolé uniquement."
+      },
+      {
+        "name": "ombre-scotch",
+        "value": "0 1px 1px rgb(0 0 0 / 0.06)",
+        "purpose": "Morceau de scotch en haut des feuilles."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ressort",
+        "value": "cubic-bezier(0.34, 1.4, 0.64, 1)",
+        "purpose": "Survol des boutons (0,18 s)."
+      },
+      {
+        "name": "entree",
+        "value": "translateY(2.5rem) rotate(-1.5deg) vers repos, dépassement -0.3rem à 70 %; view() entry 5%..45%",
+        "purpose": "Entrée sèche des scènes au défilement."
+      },
+      {
+        "name": "surligne",
+        "value": "background-size 0% vers 100% ; view() entry 30%..cover 35%",
+        "purpose": "Le surligneur se trace de gauche à droite."
+      },
+      {
+        "name": "tampon",
+        "value": "scale(2.2) vers 0.94 vers 1, rotate(-6deg) ; view() entry 40%..cover 40%",
+        "purpose": "Tampon posé d'un coup."
+      },
+      {
+        "name": "fleche",
+        "value": "balaie jusqu'au bout à 55 %, revient sur --cible ; view() entry 20%..cover 50%",
+        "purpose": "Flèche du Hype-mètre qui hésite puis se pose."
+      },
+      {
+        "name": "entoure",
+        "value": "clip-path inset de gauche à droite ; view() cover 40%..55%",
+        "purpose": "Le stylo rouge entoure le verdict."
+      },
+      {
+        "name": "mouvement-reduit",
+        "value": "prefers-reduced-motion: reduce coupe animations et transitions",
+        "purpose": "Tout reste visible et immobile."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "lecture-une-colonne",
+        "value": "48rem"
+      },
+      {
+        "name": "scenes-une-colonne",
+        "value": "52rem"
+      },
+      {
+        "name": "mobile-etroit",
+        "value": "34rem"
+      }
+    ],
+    "filters": [
+      {
+        "name": "feutre",
+        "value": "feTurbulence fractalNoise baseFrequency 0.035 numOctaves 2 seed 3 + feDisplacementMap scale 3.5",
+        "purpose": "Fait frémir le seul contour des éléments .trait."
+      }
+    ],
+    "background": {
+      "name": "cahier",
+      "value": "papier + quadrillage carreau 1px tous les 24px + marge 2px à (gouttière - 1.25rem)",
+      "purpose": "Fond de toutes les pages, en CSS pur."
+    }
+  },
+  "components": [
+    {
+      "name": "Bouton principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Feutre noir sur fond surligneur : abonnement, inscription.",
+      "html": "<a class=\"ds-bouton ds-trait\" href=\"#\">Suivre Matou sur TikTok</a>",
+      "css": ".ds-trait{position:relative;isolation:isolate}.ds-trait::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--fond,#FFFFFF);border:3px solid #1C1B1A;border-radius:var(--rayon,10px 14px 9px 12px);box-shadow:7px 9px 3px rgb(28 27 26 / 0.12)}.ds-bouton{--fond:#FFE14A;--rayon:255px 18px 225px 18px / 18px 225px 18px 255px;display:inline-flex;align-items:center;justify-content:center;min-height:3.1rem;padding:0.65rem 1.5rem;color:#1C1B1A;font-family:'Shantell Sans',ui-rounded,system-ui,sans-serif;font-weight:800;font-size:1.1rem;line-height:1.2;text-decoration:none;border:0;background:none;cursor:pointer;transition:transform 0.18s cubic-bezier(0.34,1.4,0.64,1)}.ds-bouton::before{transition:box-shadow 0.18s ease}.ds-bouton:hover{transform:translate(-1px,-3px) rotate(-1deg)}.ds-bouton:hover::before{box-shadow:9px 13px 6px rgb(28 27 26 / 0.16)}.ds-bouton:active{transform:translate(1px,1px)}.ds-bouton:focus-visible{outline:3px solid #2457C5;outline-offset:4px;border-radius:4px}"
+    },
+    {
+      "name": "Bouton secondaire",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Même forme sur feuille blanche : réseaux après le premier.",
+      "html": "<a class=\"ds-bouton ds-trait ds-secondaire\" href=\"#\">Instagram</a>",
+      "css": ".ds-trait{position:relative;isolation:isolate}.ds-trait::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--fond,#FFFFFF);border:3px solid #1C1B1A;border-radius:var(--rayon,10px 14px 9px 12px);box-shadow:7px 9px 3px rgb(28 27 26 / 0.12)}.ds-bouton{--fond:#FFE14A;--rayon:255px 18px 225px 18px / 18px 225px 18px 255px;display:inline-flex;align-items:center;justify-content:center;min-height:3.1rem;padding:0.65rem 1.5rem;color:#1C1B1A;font-family:'Shantell Sans',ui-rounded,system-ui,sans-serif;font-weight:800;font-size:1.1rem;line-height:1.2;text-decoration:none;border:0;background:none;cursor:pointer;transition:transform 0.18s cubic-bezier(0.34,1.4,0.64,1)}.ds-bouton::before{transition:box-shadow 0.18s ease}.ds-bouton:hover{transform:translate(-1px,-3px) rotate(-1deg)}.ds-bouton:hover::before{box-shadow:9px 13px 6px rgb(28 27 26 / 0.16)}.ds-bouton:active{transform:translate(1px,1px)}.ds-bouton:focus-visible{outline:3px solid #2457C5;outline-offset:4px;border-radius:4px}.ds-secondaire{--fond:#FFFFFF}"
+    },
+    {
+      "name": "Tampon de statut",
+      "kind": "chip",
+      "refersTo": "tampon-annonce",
+      "description": "ANNONCÉ / DISPONIBLE / RUMEUR, encre en multiply.",
+      "html": "<span class=\"ds-tampon\" style=\"--c:#2457C5\">ANNONCÉ</span> <span class=\"ds-tampon\" style=\"--c:#1F8A4C\">DISPONIBLE</span> <span class=\"ds-tampon\" style=\"--c:#D33A2C\">RUMEUR</span>",
+      "css": ".ds-tampon{display:inline-block;padding:0.12em 0.6em;border:3px solid var(--c);border-radius:8px;color:var(--c);font-family:'Permanent Marker','Comic Sans MS',cursive;letter-spacing:0.06em;line-height:1.3;transform:rotate(-6deg);mix-blend-mode:multiply;font-size:1.15rem}"
+    },
+    {
+      "name": "Feuille scotchée",
+      "kind": "card",
+      "refersTo": "feuille",
+      "description": "Feuille blanche au feutre, scotch en haut, ombre posée, légèrement de travers.",
+      "html": "<article class=\"ds-feuille ds-trait\"><h3>Le dernier épisode</h3><p>Une idée par vidéo, la source à l'appui.</p></article>",
+      "css": ".ds-trait{position:relative;isolation:isolate}.ds-trait::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--fond,#FFFFFF);border:3px solid #1C1B1A;border-radius:var(--rayon,10px 14px 9px 12px);box-shadow:7px 9px 3px rgb(28 27 26 / 0.12)}.ds-feuille{padding:clamp(1.25rem,4vw,2rem);transform:rotate(-0.6deg);font-family:'Shantell Sans',ui-rounded,system-ui,sans-serif;color:#1C1B1A}.ds-feuille h3{margin:0 0 .5rem;font-family:'Permanent Marker',cursive;font-weight:400}.ds-feuille::after{content:'';position:absolute;top:-13px;left:50%;width:92px;height:26px;transform:translateX(-50%) rotate(-3deg);background:rgb(255 236 160 / 0.78);box-shadow:0 1px 1px rgb(0 0 0 / 0.06)}"
+    },
+    {
+      "name": "Champ e-mail",
+      "kind": "input",
+      "refersTo": "input-courriel",
+      "description": "Champ de la lettre de Matou : bordure d'encre, fond papier.",
+      "html": "<label class=\"ds-label\" for=\"ds-c\">Ton adresse e-mail</label><input id=\"ds-c\" class=\"ds-champ\" type=\"email\" placeholder=\"toi@exemple.fr\">",
+      "css": ".ds-label{display:block;margin-bottom:.4rem;font-family:'Shantell Sans',ui-rounded,sans-serif;font-weight:800;color:#1C1B1A}.ds-champ{min-height:3.1rem;padding:0 1rem;border:3px solid #1C1B1A;border-radius:10px;background:#FBF5E6;font-family:'Shantell Sans',ui-rounded,sans-serif;font-size:1rem;color:#1C1B1A;caret-color:#2457C5}.ds-champ:focus-visible{outline:3px solid #2457C5;outline-offset:4px}"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Barre fine : logo au marqueur, liens Shantell 800, page courante surlignée, bouton S'abonner.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-logo\" href=\"#\">Matou</a><span><a class=\"ds-lien\" aria-current=\"page\" href=\"#\">Blog</a></span></nav>",
+      "css": ".ds-nav{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.9rem 1.25rem}.ds-logo{font-family:'Permanent Marker',cursive;font-size:1.5rem;color:#1C1B1A;text-decoration:none}.ds-lien{font-family:'Shantell Sans',ui-rounded,sans-serif;font-weight:800;color:#1C1B1A;text-decoration:none}.ds-lien[aria-current=page]{background:linear-gradient(#FFE14A,#FFE14A) no-repeat 0 65% / 100% 70%}.ds-lien:hover{text-decoration:underline}.ds-lien:focus-visible{outline:3px solid #2457C5;outline-offset:4px;border-radius:4px}"
+    },
+    {
+      "name": "Surligneur",
+      "kind": "custom",
+      "description": "Le mot clé de la scène, tracé biseauté sur 78 % de la hauteur.",
+      "html": "<h2 class=\"ds-titre\">En fait, Matou fait <mark class=\"ds-mark\">le tri</mark>.</h2>",
+      "css": ".ds-titre{font-family:'Permanent Marker',cursive;font-weight:400;text-transform:uppercase;color:#1C1B1A}.ds-mark{color:inherit;padding:0 .12em;background:linear-gradient(100deg,transparent .15em,#FFE14A .2em,#FFE14A calc(100% - .2em),transparent calc(100% - .15em)) no-repeat 0 60% / 100% 78%}"
+    },
+    {
+      "name": "Case du Hype-mètre",
+      "kind": "custom",
+      "refersTo": "hype-case-choisie",
+      "description": "Case au feutre ; la choisie prend son fluo et le stylo rouge l'entoure.",
+      "html": "<div class=\"ds-case ds-trait\">Prometteur</div>",
+      "css": ".ds-trait{position:relative;isolation:isolate}.ds-trait::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--fond,#FFFFFF);border:3px solid #1C1B1A;border-radius:var(--rayon,10px 14px 9px 12px);box-shadow:7px 9px 3px rgb(28 27 26 / 0.12)}.ds-case{--fond:#9EEA8C;--rayon:14px;display:inline-grid;justify-items:center;padding:1rem .8rem .8rem;font-family:'Shantell Sans',ui-rounded,sans-serif;font-weight:800;color:#1C1B1A;outline:4px solid #D33A2C;outline-offset:10px;border-radius:50%}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Le cahier de Matou",
+    "overview": "Le site est le même cahier d'écolier que les vidéos, ouvert dans un navigateur. Le fond est un papier crème à petits carreaux avec une marge rouge, entièrement en CSS (aucune image). Tout ce qui est posé dessus a l'air fait main : contours au feutre noir épais qui frémissent sur le bord, feuilles blanches scotchées avec une ombre douce décalée, surligneur jaune sur le mot clé, tampons de couleur en multiply, et Matou, le chat à lunettes, qui change d'expression et de place d'une scène à l'autre.\n\nLa page d'accueil se lit comme un épisode, scène après scène, et le mouvement reprend celui des vidéos : entrées sèches avec un léger ressort, surligneur qui se trace de gauche à droite, tampon posé d'un coup. Tout est piloté par le défilement en CSS, visible par défaut, et coupé quand l'utilisateur demande moins de mouvement. Les pages de lecture (blog) gardent le même monde mais calment le jeu : corps de texte en police système, colonne étroite, une seule note « post-it » par nuance importante.\n\nLa densité est faible et l'échelle généreuse. Le monde se reconnaît en une image et tranche avec les comptes IA sombres et néon.",
+    "keyCharacteristics": [
+      "Papier crème à carreaux de 24 px et marge rouge, dessinés en CSS pur.",
+      "Contour au feutre irrégulier, déformé par le filtre SVG `#feutre` (turbulence, déplacement 3,5).",
+      "Surligneur jaune rare, posé sur un mot clé par scène.",
+      "Tampons bleu / vert / rouge réservés aux statuts ANNONCÉ / DISPONIBLE / RUMEUR.",
+      "Matou en SVG inline, une expression par scène, posé sur une ellipse d'ombre grise.",
+      "Mouvement lié au défilement, sans JavaScript, absent en mouvement réduit."
+    ],
+    "rules": [
+      {
+        "name": "The Un Surligneur par Scène Rule",
+        "body": "Le jaune signale le mot clé de la scène. Un `mark` jaune par titre ou par phrase, deux au plus sur un écran ; s'il est partout, il ne signale plus rien.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stylo qui Veut Dire Quelque Chose Rule",
+        "body": "Le vert et le rouge ne servent jamais à décorer : ils sont un statut (ou, pour le rouge, l'entourage du verdict). Le bleu est à la fois statut ANNONCÉ et couleur interactive, rien d'autre.",
+        "section": "colors"
+      },
+      {
+        "name": "The Source Unique Rule",
+        "body": "Une couleur se change dans `brand/tokens.json`, jamais dans une feuille de style. Le site la reçoit par les variables CSS que Base.astro génère.",
+        "section": "colors"
+      },
+      {
+        "name": "The Marqueur pour Titrer Rule",
+        "body": "Permanent Marker ne sert qu'aux titres, aux numéros d'épisode et aux tampons, toujours en graisse 400, jamais pour une phrase de lecture.",
+        "section": "typography"
+      },
+      {
+        "name": "The Équilibrage Rule",
+        "body": "Les titres sont en `text-wrap: balance`, les paragraphes et listes en `text-wrap: pretty`.",
+        "section": "typography"
+      },
+      {
+        "name": "The Une Seule Ombre Rule",
+        "body": "Tout ce qui est posé sur le cahier porte l'ombre posée ; seul le survol d'un bouton la soulève. Aucune autre ombre n'entre dans le système.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do lire chaque couleur dans `brand/tokens.json` via les variables CSS de Base.astro (`--papier`, `--encre`, `--surligneur`, `--bleu`, `--vert`, `--rouge`, `--rose`, `--fluo-vert`, `--fluo-bleu`, `--orange`).",
+      "Do poser le contenu sur une feuille blanche au feutre, scotchée, légèrement de travers, avec l'ombre posée (7px 9px 3px, encre à 12 %).",
+      "Do donner à chaque scène un seul mot surligné au jaune, et un Matou avec une expression qui lui correspond.",
+      "Do dessiner les icônes avec les SVG au feutre de `brand/icones/`, en ligne.",
+      "Do garder le mouvement visible par défaut, piloté par le défilement en CSS, et supprimé sous `prefers-reduced-motion: reduce`."
+    ],
+    "donts": [
+      "Don't utiliser le vert ou le rouge des stylos en décoration : ils signifient DISPONIBLE et RUMEUR.",
+      "Don't écrire du texte de lecture en Permanent Marker, ni du texte en graphite.",
+      "Don't ajouter d'autres ombres que l'ombre posée et l'ombre soulevée au survol.",
+      "Don't tracer des contours parfaitement réguliers : le feutre a des rayons inégaux et passe par le filtre `#feutre`.",
+      "Don't passer aux fonds sombres et aux néons des comptes IA : le cahier reste crème."
+    ]
+  }
+}

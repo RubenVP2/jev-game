@@ -1,0 +1,46 @@
+# Construit le site avec le contenu du dépôt des vidéos et le publie sur Cloudflare Workers.
+# Toutes les heures : un épisode programmé apparaît dès que l'heure de sa vidéo est passée,
+# et chaque nouvel épisode poussé sur vids-for-rs arrive sans rien faire.
+name: Déployer le site
+
+on:
+  push:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: deployer
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    # un push ne déploie que depuis la branche par défaut ; ailleurs, on vérifie seulement le build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      LETTRE_ACTION: ${{ vars.LETTRE_ACTION }}
+      LETTRE_CHAMP: ${{ vars.LETTRE_CHAMP }}
+      CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx astro check
+      - name: Publier sur Cloudflare
+        if: github.ref_name == github.event.repository.default_branch
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::SITE_URL (variable) ou CLOUDFLARE_API_TOKEN (secret) manquant : site construit mais pas publié. Voir README.md."
+            exit 0
+          fi
+          npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

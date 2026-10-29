@@ -1,0 +1,41 @@
+---
+import {RESEAUX} from '../config';
+
+type Props = {grand?: boolean; source?: string};
+const {grand = false, source} = Astro.props;
+---
+
+<ul class:list={['reseaux', {grand}]}>
+  {
+    RESEAUX.map((r, i) => (
+      <li>
+        <a href={r.url} rel="me noopener" target="_blank" class:list={['bouton', 'trait', {secondaire: i > 0}]} data-reseau={r.id} data-source={source}>
+          <span class="nom">{r.nom}</span>
+          {grand && <span class="pseudo">{r.pseudo}</span>}
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .reseaux {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .grand {
+    flex-direction: column;
+  }
+  .grand .bouton {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .pseudo {
+    font-weight: 400;
+    font-size: 0.95rem;
+  }
+</style>

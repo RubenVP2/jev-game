@@ -1,0 +1,43 @@
+---
+// Matou en SVG inline (aucune requête en plus), tiré de brand/mascotte/.
+const dessins = import.meta.glob<string>('@contenu/brand/mascotte/*.svg', {eager: true, query: '?raw', import: 'default'});
+
+type Props = {expression?: string; class?: string; decoratif?: boolean; ombre?: boolean};
+// ombre : l'ellipse grise des planches, qui pose Matou sur la ligne du cahier
+const {expression = 'content', class: classe, decoratif = false, ombre = true} = Astro.props;
+const brut = Object.entries(dessins).find(([f]) => f.endsWith(`/matou-${expression}.svg`))?.[1];
+if (!brut) throw new Error(`Matou : expression inconnue « ${expression} »`);
+const svg = brut
+  .replace(/<\?xml[^>]*\?>\s*/, '')
+  .replace(/<svg([^>]*?)\swidth="\d+"\sheight="\d+"/, '<svg$1')
+  .replace('<svg', decoratif ? '<svg aria-hidden="true" focusable="false"' : '<svg role="img" aria-label="Matou, le chat à lunettes"');
+---
+
+<span class:list={['matou', {pose: ombre}, classe]} set:html={svg} />
+
+<style>
+  .matou {
+    display: block;
+  }
+  .pose {
+    position: relative;
+    padding-bottom: 7%;
+  }
+  .pose::after {
+    content: '';
+    position: absolute;
+    left: 20%;
+    right: 16%;
+    bottom: 0;
+    height: 6%;
+    border-radius: 50%;
+    background: rgb(169 166 160 / 0.32);
+  }
+  .matou :global(svg) {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+</style>

@@ -1,0 +1,505 @@
+---
+// L'accueil se lit comme un épisode : hook, dernier épisode, « En fait… », tampons,
+// Hype-mètre, puis « C'était Matou, et c'est tout. » (brief : .impeccable/surfaces/).
+import {Image} from 'astro:assets';
+import HypeMetre from '../components/HypeMetre.astro';
+import Icone from '../components/Icone.astro';
+import Matou from '../components/Matou.astro';
+import Reseaux from '../components/Reseaux.astro';
+import Tampon from '../components/Tampon.astro';
+import {CONTACT, LETTRE, MARQUE, RESEAUX} from '../config';
+import Base from '../layouts/Base.astro';
+import {articles, dateLongue, SERIES} from '../lib/episodes';
+
+const liste = await articles();
+const dernier = liste[0];
+const [principal, ...autres] = RESEAUX;
+const site = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: MARQUE.nomComplet,
+  url: new URL('/', Astro.site).href,
+  inLanguage: 'fr-FR',
+  publisher: {'@id': new URL('/#matou', Astro.site).href},
+};
+---
+
+<Base titre={MARQUE.nom} description={MARQUE.description} jsonLd={[site]}>
+  <!-- Scène 1 : le hook -->
+  <section class="hook" aria-labelledby="hook">
+    <div class="hook-texte">
+      <h1 id="hook">L'actu de l'IA en <mark>30 secondes</mark>.</h1>
+      <p class="sous-titre">Un chat t'explique, <mark>sources</mark> à l'appui.</p>
+      <div class="actions">
+        <a class="bouton trait principal" href={principal.url} rel="me noopener" target="_blank">
+          Suivre Matou sur {principal.nom}
+        </a>
+        <p class="ailleurs">
+          Aussi sur{' '}
+          {
+            autres.map((r, i) => (
+              <>
+                <a href={r.url} rel="me noopener" target="_blank">{r.nom}</a>
+                {i < autres.length - 2 ? ', ' : i === autres.length - 2 ? ' et ' : '.'}
+              </>
+            ))
+          }
+        </p>
+      </div>
+    </div>
+    <div class="hook-visuel">
+      <Matou expression="surpris" class="hook-matou" />
+      {
+        dernier && (
+          <a class="etiquette" href="#dernier">
+            <span class="numero">Matou #{dernier.numero}</span> {SERIES[dernier.serie]}
+          </a>
+        )
+      }
+    </div>
+  </section>
+
+  <!-- Scène 2 : le dernier épisode, comme la scène « source » -->
+  {
+    dernier && (
+      <section data-anime class="scene source" aria-labelledby="dernier">
+        <h2 id="dernier">Le dernier épisode</h2>
+        <article class="episode feuille trait" data-entre data-anime>
+          {dernier.miniature && (
+            <a href={`/blog/${dernier.slug}/`} class="episode-mini" tabindex="-1" aria-hidden="true">
+              <Image src={dernier.miniature} alt="" widths={[180, 360]} sizes="180px" />
+            </a>
+          )}
+          <div class="episode-texte">
+            <h3>
+              <a href={`/blog/${dernier.slug}/`}>{dernier.titre}</a>
+            </h3>
+            <p>{dernier.description}</p>
+            <p class="episode-meta">
+              <span class="numero">#{dernier.numero}</span> {SERIES[dernier.serie]} ·{' '}
+              <time datetime={dernier.date.toISOString()}>{dernier.date.toLocaleDateString('fr-FR', {day: 'numeric', month: 'long', timeZone: 'Europe/Paris'})}</time>
+            </p>
+            <p class="episode-source">
+              Source : <a href={dernier.source.url} rel="noopener" target="_blank">{dernier.source.nom}</a>, {dateLongue(new Date(dernier.source.date))}
+            </p>
+            <Tampon statut={dernier.statut} taille="1.15rem" />
+          </div>
+        </article>
+        <p class="suite">
+          <a href={`/blog/${dernier.slug}/`}>Lire la version texte</a>
+          {liste.length > 1 && (
+            <>
+              {' '}· <a href="/blog/">tous les épisodes ({liste.length})</a>
+            </>
+          )}
+        </p>
+      </section>
+    )
+  }
+
+  <!-- Scène 3 : « En fait… » -->
+  <section data-anime class="scene enfait" aria-labelledby="en-fait">
+    <Matou expression="enFait" class="enfait-matou" decoratif />
+    <div>
+      <h2 id="en-fait">En fait, Matou fait <mark>le tri</mark>.</h2>
+      <p class="chapo">Chaque jour, il lit les annonces des grandes boîtes de l'IA et n'en garde qu'une. Puis il te l'explique en 30 secondes.</p>
+      <ul class="programme">
+        <li data-entre>
+          <Icone nom="ampoule" />
+          <p><strong>Une idée par vidéo.</strong> Pas de fourre-tout : tu repars avec l'essentiel.</p>
+        </li>
+        <li data-entre>
+          <Icone nom="document" />
+          <p><strong>Toujours la source.</strong> À l'écran et dans la description. Rien n'est inventé.</p>
+        </li>
+        <li data-entre>
+          <Icone nom="coche" />
+          <p><strong>Zéro jargon.</strong> Si un mot technique s'invite, Matou l'explique.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Scène 4 : les tampons -->
+  <section data-anime class="scene tampons" aria-labelledby="statuts">
+    <h2 id="statuts">Annoncé, disponible ou <mark>rumeur</mark> ?</h2>
+    <p class="chapo">Chaque info reçoit son tampon. Tu sais tout de suite si tu peux l'essayer aujourd'hui.</p>
+    <ul class="statuts feuille trait" data-anime>
+      <li><Tampon statut="annonce" taille="clamp(1.2rem, 4vw, 1.7rem)" /><span>Présenté, mais pas encore entre tes mains.</span></li>
+      <li><Tampon statut="disponible" taille="clamp(1.2rem, 4vw, 1.7rem)" /><span>Tu peux l'utiliser, parfois en payant.</span></li>
+      <li><Tampon statut="rumeur" taille="clamp(1.2rem, 4vw, 1.7rem)" /><span>Pas confirmé par l'entreprise.</span></li>
+    </ul>
+  </section>
+
+  <!-- Scène 5 : le Hype-mètre -->
+  <section data-anime class="scene verdict" aria-labelledby="hype">
+    <div>
+      <h2 id="hype">À la fin, le <mark>Hype-mètre</mark> tranche.</h2>
+      <p class="chapo">
+        Pur buzz, prometteur ou game changer ?{' '}
+        {dernier ? <>Pour le #{dernier.numero} :</> : 'Matou donne son avis, et dit pourquoi.'}
+      </p>
+      <HypeMetre verdict={dernier?.verdict} raison={dernier?.raison} />
+    </div>
+    <Matou expression="sceptique" class="verdict-matou" decoratif />
+  </section>
+
+  {
+    (LETTRE || CONTACT) && (
+      <section data-anime class="scene valeur" aria-label="Rester en contact">
+        {LETTRE && (
+          <form class="lettre feuille trait" method="post" action={LETTRE.action} data-entre>
+            <h2>La lettre de Matou</h2>
+            <p>Les épisodes de la semaine en version texte, dans ta boîte mail. Désinscription en un clic.</p>
+            <label for="courriel">Ton adresse e-mail</label>
+            <div class="champ">
+              <input id="courriel" name={LETTRE.champ} type="email" required autocomplete="email" placeholder="toi@exemple.fr" />
+              <button class="bouton trait" type="submit">M'inscrire</button>
+            </div>
+          </form>
+        )}
+        {CONTACT && (
+          <div class="contact">
+            <h2>Une marque, un média ?</h2>
+            <p>
+              Pour travailler avec Matou : <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+            </p>
+          </div>
+        )}
+      </section>
+    )
+  }
+
+  <!-- Scène 6 : la fin -->
+  <section id="suivre" class="scene fin" aria-labelledby="fin">
+    <Matou expression="content" class="fin-matou" decoratif />
+    <div>
+      <h2 id="fin">C'était Matou, <mark>et c'est tout</mark>.</h2>
+      <p class="chapo">Une vidéo par jour, là où tu scrolles. Abonne-toi : au dîner, c'est toi qui expliqueras l'IA.</p>
+      <Reseaux grand source="accueil" />
+      <p class="suite"><a href="/blog/">Ou lire le blog</a></p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* Scène 1 */
+  .hook {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 1rem 2.5rem;
+    padding-block: clamp(1rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);
+  }
+  .hook-visuel {
+    position: relative;
+    display: grid;
+    justify-items: center;
+  }
+  .etiquette {
+    position: absolute;
+    left: 0;
+    bottom: 12%;
+    z-index: 2;
+    padding: 0.35rem 0.8rem 0.35rem 0.4rem;
+    background: var(--blanc);
+    box-shadow: var(--ombre);
+    color: var(--encre);
+    font-family: var(--font-main);
+    font-weight: 800;
+    text-decoration: none;
+    transform: rotate(-5deg);
+  }
+  .etiquette:hover {
+    text-decoration: underline;
+  }
+  .numero {
+    display: inline-block;
+    padding: 0.05em 0.45em;
+    background: var(--surligneur);
+    font-family: var(--font-titre);
+    font-weight: 400;
+    text-transform: uppercase;
+    transform: rotate(-2deg);
+  }
+  h1 {
+    margin: 1.25rem 0 1rem;
+    font-size: clamp(2.9rem, 9vw, 6rem);
+    line-height: 1.02;
+    text-transform: uppercase;
+  }
+  .sous-titre {
+    margin: 0;
+    font-family: var(--font-main);
+    font-weight: 800;
+    font-size: clamp(1rem, 4.2vw, 1.7rem);
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+  .sous-titre mark {
+    background-image: linear-gradient(var(--fluo-bleu), var(--fluo-bleu));
+  }
+  .actions {
+    margin-top: 2rem;
+  }
+  .principal {
+    font-size: 1.2rem;
+    min-height: 3.6rem;
+    padding-inline: 1.8rem;
+  }
+  .ailleurs {
+    margin: 0.9rem 0 0;
+    font-family: var(--font-main);
+  }
+  .ailleurs a {
+    color: var(--encre);
+    font-weight: 800;
+  }
+  :global(.hook-matou) {
+    width: 100%;
+    max-width: 420px;
+    justify-self: center;
+    margin-bottom: 1rem;
+  }
+
+  /* Scènes communes */
+  .scene {
+    margin-block: clamp(4rem, 10vw, 7.5rem);
+  }
+  h2 {
+    margin: 0 0 1rem;
+    font-size: clamp(2rem, 5.5vw, 3.2rem);
+    text-transform: uppercase;
+  }
+  .chapo {
+    max-width: 36rem;
+    margin: 0 0 2rem;
+    font-family: var(--font-main);
+    font-size: clamp(1.1rem, 2.6vw, 1.3rem);
+    line-height: 1.5;
+  }
+  .suite {
+    margin-top: 1.5rem;
+    font-family: var(--font-main);
+    font-weight: 800;
+  }
+
+  /* Scène 2 */
+  .source h2 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+  }
+  .episode {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 1.75rem;
+    align-items: start;
+    max-width: 52rem;
+    transform: rotate(-0.6deg);
+  }
+  .episode-mini :global(img) {
+    display: block;
+    width: 180px;
+    border: 3px solid var(--encre);
+    border-radius: 10px;
+  }
+  .episode-meta {
+    margin: 0;
+    font-family: var(--font-main);
+    font-weight: 800;
+  }
+  .episode-meta .numero {
+    font-size: 1.05rem;
+  }
+  .episode h3 {
+    margin: 0.6rem 0;
+    font-size: clamp(1.4rem, 3.6vw, 2rem);
+  }
+  .episode h3 a {
+    color: var(--encre);
+    text-decoration: none;
+  }
+  .episode h3 a:hover {
+    text-decoration: underline;
+  }
+  .episode p {
+    margin: 0 0 0.8rem;
+    font-family: var(--font-main);
+  }
+  .episode-source {
+    font-size: 0.95rem;
+  }
+
+  /* Scène 3 */
+  .enfait {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+    gap: 2.5rem;
+    align-items: center;
+  }
+  :global(.enfait-matou) {
+    max-width: 380px;
+  }
+  .programme {
+    display: grid;
+    gap: 1.4rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .programme li {
+    display: flex;
+    gap: 1.1rem;
+    align-items: center;
+  }
+  .programme p {
+    margin: 0;
+    font-family: var(--font-main);
+    font-size: 1.15rem;
+  }
+  .programme strong {
+    font-weight: 800;
+  }
+
+  /* Scène 4 */
+  .statuts {
+    display: grid;
+    gap: 1.8rem;
+    max-width: 44rem;
+    margin: 0;
+    padding-block: 2.2rem;
+    list-style: none;
+    transform: rotate(0.5deg);
+  }
+  .statuts li {
+    display: grid;
+    grid-template-columns: 13.5rem 1fr;
+    align-items: center;
+    gap: 1.25rem;
+    font-family: var(--font-main);
+    font-size: 1.1rem;
+  }
+  .statuts :global(.tampon) {
+    justify-self: center;
+  }
+
+  /* Scène 5 */
+  .verdict {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.8fr);
+    gap: 2.5rem;
+    align-items: center;
+  }
+  :global(.verdict-matou) {
+    max-width: 300px;
+    justify-self: start;
+    align-self: end;
+  }
+
+  /* Valeur (si réglée) */
+  .valeur {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    gap: 3rem;
+    align-items: start;
+  }
+  .lettre h2,
+  .contact h2 {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+  }
+  .lettre p {
+    font-family: var(--font-main);
+  }
+  .lettre label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-family: var(--font-main);
+    font-weight: 800;
+  }
+  .champ {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .champ input {
+    flex: 1 1 14rem;
+    min-height: 3.1rem;
+    padding: 0 1rem;
+    border: 3px solid var(--encre);
+    border-radius: 10px;
+    background: var(--papier);
+    font: inherit;
+    font-family: var(--font-main);
+    color: var(--encre);
+  }
+  .champ input::placeholder {
+    color: #6b675f;
+  }
+  .contact p {
+    font-family: var(--font-main);
+    font-size: 1.15rem;
+  }
+
+  /* Scène 6 */
+  .fin {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr);
+    gap: 2.5rem;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  :global(.fin-matou) {
+    max-width: 360px;
+  }
+  .fin :global(.reseaux) {
+    max-width: 26rem;
+  }
+
+  @media (max-width: 52rem) {
+    .hook,
+    .enfait,
+    .verdict,
+    .fin {
+      grid-template-columns: 1fr;
+    }
+    .hook-visuel {
+      grid-row: 1;
+      width: 58%;
+      max-width: 16rem;
+      justify-self: end;
+      margin: -0.5rem 0 -0.5rem;
+    }
+    .etiquette {
+      left: -55%;
+      bottom: 22%;
+    }
+    :global(.enfait-matou),
+    :global(.fin-matou) {
+      max-width: 13rem;
+    }
+    :global(.verdict-matou) {
+      grid-row: 1;
+      max-width: 9rem;
+      justify-self: end;
+      margin-bottom: -2.5rem;
+    }
+  }
+  @media (max-width: 34rem) {
+    .principal {
+      width: 100%;
+    }
+    .episode {
+      grid-template-columns: 1fr;
+    }
+    .episode-mini :global(img) {
+      width: 130px;
+    }
+    .statuts li {
+      grid-template-columns: 1fr;
+      justify-items: start;
+      gap: 0.6rem;
+    }
+    .statuts :global(.tampon) {
+      justify-self: start;
+    }
+  }
+</style>

@@ -1,0 +1,56 @@
+---
+// Page « lien en bio » : à mettre dans la bio de chaque réseau.
+import CarteArticle from '../components/CarteArticle.astro';
+import Matou from '../components/Matou.astro';
+import Reseaux from '../components/Reseaux.astro';
+import {MARQUE} from '../config';
+import Base from '../layouts/Base.astro';
+import {articles} from '../lib/episodes';
+
+const dernier = (await articles())[0];
+---
+
+<Base titre="Liens" description={MARQUE.description} indexer={false}>
+  <div class="liens">
+    <Matou expression="content" class="liens-matou" decoratif />
+    <h1>Matou <mark>@matou_ai</mark></h1>
+    <p>{MARQUE.slogan}</p>
+    {
+      dernier && (
+        <section aria-label="Dernier article">
+          <CarteArticle article={dernier} titre="h2" />
+        </section>
+      )
+    }
+    <a class="bouton blog" href="/blog/">Tous les décryptages</a>
+    <Reseaux grand source="liens" />
+  </div>
+</Base>
+
+<style>
+  .liens {
+    display: grid;
+    gap: 1.25rem;
+    max-width: 28rem;
+    margin: 1rem auto 0;
+    text-align: center;
+  }
+  :global(.liens-matou) {
+    width: 160px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 2rem;
+    margin: 0;
+  }
+  p {
+    font-family: var(--font-main);
+    margin: 0;
+  }
+  section {
+    text-align: left;
+  }
+  .blog {
+    text-align: center;
+  }
+</style>
