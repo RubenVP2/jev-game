@@ -5,3 +5,6 @@ dist/
 .dev.vars
 contenu/
 .contenu-git/
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/build/
